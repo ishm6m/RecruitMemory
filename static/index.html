@@ -164,6 +164,12 @@
                        hover:bg-accent-hover active:scale-[.985] transition-all duration-150">
           <i class="hgi-stroke hgi-add-01 text-16"></i> Add candidate
         </button>
+        <!-- One-click demo candidate (Salma) — the Compare partner in DEMO.md. -->
+        <button onclick="seedDemo()"
+                class="inline-flex items-center justify-center gap-1.5 text-12 fw-450 text-text-secondary
+                       hover:text-accent transition-colors">
+          <i class="hgi-stroke hgi-magic-wand-01 text-14"></i> Load demo candidate
+        </button>
       </div>
 
       <div class="px-4 pt-2 pb-1.5 flex items-center justify-between">
@@ -402,6 +408,20 @@ function selectCandidate(c) {
   closeNav();       // collapse mobile sidebar after choosing
   loadCandidates(); // re-render sidebar highlight
   $('message').focus();
+}
+
+// One-click seed of the demo candidate (idempotent server-side) so the Compare
+// demo has a ready partner without typing facts live.
+async function seedDemo() {
+  try {
+    const res = await fetch('/seed-demo', { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const c = await res.json();
+    await loadCandidates();
+    selectCandidate(c);
+  } catch (e) {
+    errorRow("Couldn't load the demo candidate. Is the server running?");
+  }
 }
 
 async function createCandidate() {

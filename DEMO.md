@@ -7,10 +7,9 @@ natural.
 **Before you start:**
 - Run `docker compose up --build` (or `uvicorn app:app`) and open
   **http://localhost:8000**.
-- **Pre-load one candidate** so the *Compare* finale is instant: create
-  **Salma** (role *Loom Operator*) and give her two facts —
-  *"Salma has 2 years on jute looms but scored 10/10 on quality control."* and
-  *"Salma is extremely reliable — never missed a shift."*
+- **Pre-load the demo candidate** so the *Compare* finale is instant: click
+  **"Load demo candidate"** under the Add-candidate box in the sidebar. This seeds
+  **Salma (demo)** with a few facts in one click (no typing needed).
 - Leave **Karim uncreated** — you'll build him live. Have the **"Stored
   memories"** button and the sidebar **"Compare"** button in mind.
 

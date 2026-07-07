@@ -90,6 +90,30 @@ def chat(candidate_id: int, body: ChatIn):
     }
 
 
+# A ready-made candidate so presenters don't hand-type facts on stage. She's the
+# Compare partner in DEMO.md; facts go through the real extraction pipeline.
+DEMO_CANDIDATE = {
+    "name": "Salma (demo)",
+    "role": "Loom Operator",
+    "facts": [
+        "Salma has 2 years of experience on jute looms but scored 10 out of 10 on quality control.",
+        "Salma is extremely reliable and has never missed a shift.",
+    ],
+}
+
+
+@app.post("/seed-demo")
+def seed_demo():
+    """One-click demo candidate. Idempotent: reuse the existing one if already seeded."""
+    for c in db.list_candidates():
+        if c["name"] == DEMO_CANDIDATE["name"]:
+            return c
+    cand = db.create_candidate(DEMO_CANDIDATE["name"], DEMO_CANDIDATE["role"])
+    for msg in DEMO_CANDIDATE["facts"]:
+        memory.extract_and_store(cand["id"], msg)
+    return cand
+
+
 @app.post("/compare")
 def compare(body: CompareIn):
     """Cross-candidate reasoning: recall each candidate's memories and weigh them."""
