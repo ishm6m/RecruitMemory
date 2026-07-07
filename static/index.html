@@ -10,171 +10,381 @@
   <!-- Hugeicons stroke-rounded icon font (free, no account/API key needed). -->
   <link rel="stylesheet" href="https://cdn.hugeicons.com/font/hgi-stroke-rounded.css" />
 
-  <!-- Tailwind via CDN, configured with the exact design tokens from the brief. -->
+  <!-- Tailwind via CDN, configured with a restrained, Notion/Apple-flavored token set. -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            bg:            '#FAFAF9',
-            surface:       '#FFFFFF',
-            border:        '#E7E5E4',
-            'text-primary':'#1C1917',
-            'text-secondary':'#78716C',
-            accent:        '#0F6B5C',
-            'accent-soft': '#E4F2EF',
-            danger:        '#B42318',
+            // Grayscale-forward page. One accent. Nothing shouts.
+            bg:              '#FBFBFA',  // page (warm near-white)
+            sidebar:         '#F7F7F5',  // sidebar plane, a touch deeper
+            surface:         '#FFFFFF',  // cards, compose bar, drawer
+            border:          '#E9E8E5',  // standard hairline
+            hairline:        '#F0EFEC',  // faintest divider
+            'text-primary':  '#1D1C1A',  // near-black, never pure
+            'text-secondary':'#78756F',  // labels, meta
+            'text-tertiary': '#A6A39C',  // quietest text
+            accent:          '#0F6B5C',  // the single brand color
+            'accent-soft':   '#ECF4F1',  // accent wash for chips / active
+            'accent-hover':  '#0C5A4D',
+            danger:          '#B4453A',
+            'user-bubble':   '#F2F1EE',  // user message fill (no border)
           },
           fontFamily: {
-            sans: ['-apple-system','BlinkMacSystemFont','"Segoe UI"','sans-serif'],
-            mono: ['ui-monospace','"SF Mono"','"Cascadia Code"','monospace'],
+            // The Apple-native move: the system stack renders as SF on macOS/iOS.
+            sans: ['-apple-system','BlinkMacSystemFont','"Segoe UI"','Roboto','Helvetica','Arial','sans-serif'],
+            mono: ['ui-monospace','"SF Mono"','"Cascadia Code"','Menlo','monospace'],
           },
-          fontSize: {  // the only sizes allowed by the brief
-            '13': '13px', '14': '14px', '16': '16px', '20': '20px', '28': '28px',
+          fontSize: { // size paired with its natural leading
+            '11': ['11px', '1.45'],
+            '12': ['12px', '1.45'],
+            '13': ['13px', '1.5'],
+            '14': ['14px', '1.5'],
+            '15': ['15px', '1.55'],
+            '16': ['16px', '1.5'],
+            '21': ['21px', '1.3'],
+            '28': ['28px', '1.2'],
           },
-          borderRadius: { DEFAULT: '8px' }, // 8px on controls/chips; panels use rounded-none
-          boxShadow: {   // the ONE soft shadow, reserved for the compose bar
-            compose: '0 1px 2px rgba(28,25,23,.04), 0 2px 8px rgba(28,25,23,.06)',
+          borderRadius: { sm: '6px', DEFAULT: '8px', lg: '10px', xl: '12px', '2xl': '16px' },
+          boxShadow: {
+            // Shadows are seasoning, not structure. One whisper on the compose bar.
+            compose: '0 1px 2px rgba(28,25,23,.03), 0 4px 16px rgba(28,25,23,.05)',
+            drawer:  '0 1px 3px rgba(28,25,23,.04)',
           },
+          maxWidth: { measure: '720px' }, // the reading column
         },
       },
     };
   </script>
 
-  <!-- Small custom CSS: only the two things Tailwind can't express cleanly —
-       the memory-chip motion, and a consistent keyboard focus ring. -->
   <style>
-    /* Hierarchy via weight, not size (brief: 450/550/650). */
+    /* Hierarchy through weight, not just size. */
     .fw-450 { font-weight: 450; }
     .fw-550 { font-weight: 550; }
     .fw-650 { font-weight: 650; }
 
-    /* Signature motion — reserved ONLY for a newly-extracted memory chip. */
+    /* Optical tracking: tighten headings the way SF does at display sizes. */
+    .track-tight  { letter-spacing: -0.012em; }
+    .track-tighter{ letter-spacing: -0.02em; }
+    .track-wide   { letter-spacing: 0.04em; }
+
+    body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+
+    /* ---- Motion language: short, soft, ease-out. Nothing bounces. ---- */
     @keyframes chipIn { from { opacity: 0; transform: translateY(6px); }
                         to   { opacity: 1; transform: translateY(0); } }
-    .chip-in { animation: chipIn 150ms ease-out both; }
+    .chip-in { animation: chipIn 180ms cubic-bezier(.2,.7,.2,1) both; }
 
-    /* Accessibility: one visible focus ring on every interactive element. */
-    a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
-      outline: 2px solid #0F6B5C;
-      outline-offset: 2px;
-      border-radius: 8px;
+    @keyframes msgIn  { from { opacity: 0; transform: translateY(6px); }
+                        to   { opacity: 1; transform: translateY(0); } }
+    .msg-in { animation: msgIn 200ms cubic-bezier(.2,.7,.2,1) both; }
+
+    @keyframes labelSwap { from { opacity: 0; transform: translateY(2px); }
+                           to   { opacity: 1; transform: translateY(0); } }
+    .label-swap { animation: labelSwap 220ms ease-out both; }
+
+    /* Thinking indicator: a calm breathing accent dot. */
+    @keyframes breathe { 0%,100% { opacity: .3; transform: scale(.82); }
+                         50%      { opacity: 1;  transform: scale(1); } }
+    .pulse-dot { width: 7px; height: 7px; border-radius: 9999px; background: #0F6B5C;
+                 display: inline-block; animation: breathe 1200ms ease-in-out infinite; }
+
+    /* Category dot — small, low-saturation, used on chips + in the drawer. */
+    .cat-dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; flex: none; }
+
+    /* Importance meter — a quiet 0..10 bar. */
+    .imp-track { display: inline-block; width: 34px; height: 3px; border-radius: 9999px;
+                 background: #E9E8E5; overflow: hidden; vertical-align: middle; }
+    .imp-fill  { display: block; height: 100%; background: currentColor; border-radius: 9999px;
+                 opacity: .55; transition: width .3s ease; }
+
+    /* Center every direct child of these scrollers into the reading column,
+       without touching the JS that appends into them. */
+    #chat > *, #memList > * { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
+
+    /* Memory drawer — mounted always so it can transition (no display:none). */
+    #memoryPanel { opacity: 0; transform: translateY(10px); pointer-events: none;
+                   transition: opacity .22s ease, transform .22s cubic-bezier(.2,.7,.2,1); }
+    #memoryPanel.open { opacity: 1; transform: none; pointer-events: auto; }
+
+    /* Off-canvas sidebar on small screens. */
+    #navBackdrop { opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+    #navBackdrop.show { opacity: 1; pointer-events: auto; }
+    @media (max-width: 767px) { #sidebar.open { transform: none !important; } }
+
+    /* One consistent, visible focus ring everywhere. */
+    a:focus-visible, button:focus-visible, input:focus-visible,
+    textarea:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid #0F6B5C; outline-offset: 2px; border-radius: 8px;
     }
-    /* Thin, quiet scrollbars so the chat area stays calm. */
-    #chat::-webkit-scrollbar, #candList::-webkit-scrollbar, #memList::-webkit-scrollbar { width: 8px; }
+    /* Quiet, thin scrollbars so the surfaces stay calm. */
+    #chat::-webkit-scrollbar, #candList::-webkit-scrollbar, #memList::-webkit-scrollbar { width: 10px; }
     #chat::-webkit-scrollbar-thumb, #candList::-webkit-scrollbar-thumb,
-    #memList::-webkit-scrollbar-thumb { background: #E7E5E4; border-radius: 8px; }
+    #memList::-webkit-scrollbar-thumb { background: #E4E2DE; border-radius: 9999px;
+      border: 3px solid transparent; background-clip: content-box; }
+    #chat:hover::-webkit-scrollbar-thumb { background: #D8D6D1; background-clip: content-box; }
   </style>
 </head>
 
-<body class="h-screen bg-bg text-text-primary font-sans text-14 fw-450 antialiased">
-  <div class="flex h-screen">
+<body class="h-screen bg-bg text-text-primary font-sans text-14 fw-450">
+  <div class="flex h-screen overflow-hidden">
 
-    <!-- ============ SIDEBAR: candidate list + create form ============ -->
-    <aside class="w-72 shrink-0 bg-surface border-r border-border flex flex-col">
+    <!-- Mobile backdrop for the off-canvas sidebar -->
+    <div id="navBackdrop" onclick="closeNav()" class="md:hidden fixed inset-0 z-20 bg-text-primary/20"></div>
+
+    <!-- ============ SIDEBAR ============ -->
+    <aside id="sidebar"
+           class="fixed md:static z-30 inset-y-0 left-0 w-[268px] shrink-0 bg-sidebar border-r border-border
+                  flex flex-col -translate-x-full md:translate-x-0 transition-transform duration-200 ease-out">
       <!-- brand -->
-      <div class="px-5 pt-5 pb-4">
-        <div class="text-16 fw-650 tracking-tight">RecruitMemory</div>
-        <div class="text-13 text-text-secondary fw-450">Jabbar Jute Mills · hiring assistant</div>
+      <div class="px-4 pt-4 pb-3 flex items-center gap-2.5">
+        <span class="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shrink-0">
+          <i class="hgi-stroke hgi-bookmark-02 text-14 text-white"></i>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-15 fw-650 track-tight leading-none">RecruitMemory</span>
+          <span class="block text-12 text-text-secondary fw-450 mt-0.5 truncate">Jabbar Jute Mills · hiring</span>
+        </span>
       </div>
 
       <!-- create candidate -->
-      <div class="px-4 pb-4 flex flex-col gap-2">
+      <div class="px-3 pt-2 pb-3 flex flex-col gap-2">
         <input id="newName" placeholder="Candidate name"
-               class="w-full bg-bg border border-border rounded px-3 py-2 text-14 placeholder:text-text-secondary" />
+               onkeydown="if(event.key==='Enter')createCandidate()"
+               class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-14 fw-450
+                      placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors" />
         <input id="newRole" placeholder="Role (optional)"
-               class="w-full bg-bg border border-border rounded px-3 py-2 text-14 placeholder:text-text-secondary" />
+               onkeydown="if(event.key==='Enter')createCandidate()"
+               class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-14 fw-450
+                      placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors" />
         <button onclick="createCandidate()"
-                class="inline-flex items-center justify-center gap-1.5 bg-accent text-white fw-550 rounded px-3 py-2 text-14 hover:opacity-90 transition-opacity">
+                class="inline-flex items-center justify-center gap-1.5 bg-accent text-white fw-550 rounded-lg px-3 py-2 text-14
+                       hover:bg-accent-hover active:scale-[.985] transition-all duration-150">
           <i class="hgi-stroke hgi-add-01 text-16"></i> Add candidate
         </button>
       </div>
 
-      <div class="px-5 pt-1 pb-2 text-13 text-text-secondary fw-550 uppercase tracking-wide">Candidates</div>
+      <div class="px-4 pt-2 pb-1.5 flex items-center justify-between">
+        <span class="text-11 text-text-tertiary fw-650 uppercase track-wide">Candidates</span>
+        <!-- Cross-candidate reasoning: recall two candidates' memories and weigh them. -->
+        <button onclick="openCompare()"
+                class="inline-flex items-center gap-1 text-11 fw-650 uppercase track-wide text-text-tertiary
+                       hover:text-accent transition-colors">
+          <i class="hgi-stroke hgi-arrow-data-transfer-horizontal text-13"></i> Compare
+        </button>
+      </div>
 
       <!-- candidate list -->
       <div id="candList" class="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-0.5"></div>
     </aside>
 
-    <!-- ============ MAIN PANEL: chat ============ -->
-    <main class="flex-1 min-w-0 flex flex-col relative">
-      <!-- header: who we're talking about -->
-      <header class="h-16 shrink-0 border-b border-border px-6 flex items-center justify-between">
-        <div>
-          <div id="hdrName" class="text-20 fw-650 leading-tight">Select a candidate</div>
-          <div id="hdrRole" class="text-13 text-text-secondary fw-450"></div>
+    <!-- ============ MAIN ============ -->
+    <main class="flex-1 min-w-0 flex flex-col relative bg-bg">
+      <!-- header -->
+      <header class="h-16 shrink-0 border-b border-border px-4 sm:px-6 flex items-center gap-3">
+        <button onclick="toggleNav()" aria-label="Menu"
+                class="md:hidden -ml-1 w-9 h-9 rounded-lg flex items-center justify-center text-text-secondary hover:bg-sidebar transition-colors">
+          <i class="hgi-stroke hgi-menu-01 text-20"></i>
+        </button>
+        <div class="min-w-0 flex-1">
+          <div id="hdrName" class="text-16 sm:text-21 fw-650 track-tight leading-tight truncate">Select a candidate</div>
+          <div id="hdrRole" class="text-12 text-text-secondary fw-450 truncate"></div>
         </div>
-        <button onclick="toggleMemories()"
-                class="inline-flex items-center gap-1.5 bg-surface border border-border text-text-primary fw-550 rounded px-3 py-1.5 text-14 hover:bg-bg transition-colors">
-          <i class="hgi-stroke hgi-all-bookmark text-16"></i> <span id="memBtnLabel">Stored memories</span>
+        <button id="memBtn" onclick="toggleMemories()"
+                class="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary fw-550 rounded-lg
+                       px-2.5 sm:px-3 py-1.5 text-13 hover:bg-sidebar transition-colors shrink-0">
+          <i class="hgi-stroke hgi-all-bookmark text-16"></i>
+          <span id="memBtnLabel" class="hidden sm:inline">Stored memories</span>
         </button>
       </header>
 
       <!-- conversation -->
-      <div id="chat" class="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5"></div>
+      <div id="chat" class="flex-1 overflow-y-auto px-4 sm:px-6 py-8 flex flex-col gap-7"></div>
 
-      <!-- empty state (shown until a candidate is picked) -->
-      <div id="empty" class="absolute inset-0 top-16 flex items-center justify-center pointer-events-none">
-        <div class="text-center text-text-secondary">
-          <i class="hgi-stroke hgi-user-circle text-28 block mb-2"></i>
-          <div class="text-14 fw-450">Pick or add a candidate to start.</div>
+      <!-- empty state -->
+      <div id="empty" class="absolute inset-0 top-16 flex items-center justify-center pointer-events-none px-6">
+        <div class="text-center max-w-[320px]">
+          <span class="w-12 h-12 rounded-2xl bg-accent-soft flex items-center justify-center mx-auto mb-3">
+            <i class="hgi-stroke hgi-user-multiple text-21 text-accent"></i>
+          </span>
+          <div class="text-15 fw-550 text-text-primary">No candidate selected</div>
+          <div class="text-13 text-text-secondary fw-450 mt-1 leading-relaxed">
+            Pick someone from the list, or add a candidate to start building their memory.
+          </div>
         </div>
       </div>
 
-      <!-- compose bar: the ONE place a shadow appears -->
-      <div class="shrink-0 px-6 pb-6 pt-2">
-        <div class="flex items-center gap-2 bg-surface border border-border rounded shadow-compose px-2 py-1.5">
-          <input id="message" placeholder="Say something about this candidate…"
-                 onkeydown="if(event.key==='Enter')send()"
-                 class="flex-1 bg-transparent px-2 py-2 text-16 placeholder:text-text-secondary focus:outline-none" />
-          <button onclick="send()" aria-label="Send"
-                  class="inline-flex items-center justify-center bg-accent text-white rounded w-10 h-10 hover:opacity-90 transition-opacity shrink-0">
-            <i class="hgi-stroke hgi-sent text-16"></i>
-          </button>
+      <!-- compose bar -->
+      <div class="shrink-0 px-4 sm:px-6 pb-5 pt-2">
+        <div class="max-w-measure mx-auto">
+          <div class="flex items-end gap-2 bg-surface border border-border rounded-xl shadow-compose px-2 py-1.5
+                      focus-within:border-accent/60 transition-colors">
+            <textarea id="message" rows="1" placeholder="Say something about this candidate…"
+                      oninput="autoGrow(this)"
+                      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send();}"
+                      class="flex-1 bg-transparent px-2.5 py-2 text-15 leading-relaxed placeholder:text-text-tertiary
+                             focus:outline-none resize-none max-h-40 disabled:opacity-50"></textarea>
+            <button id="sendBtn" onclick="send()" aria-label="Send"
+                    class="inline-flex items-center justify-center bg-accent text-white rounded-lg w-9 h-9 mb-0.5
+                           hover:bg-accent-hover active:scale-[.94] transition-all duration-150 shrink-0">
+              <i class="hgi-stroke hgi-sent text-16"></i>
+            </button>
+          </div>
+          <div class="text-11 text-text-tertiary fw-450 text-center mt-2 hidden sm:block">
+            Enter to send · Shift+Enter for a new line
+          </div>
         </div>
       </div>
 
-      <!-- stored-memories drawer (slides over the chat; hidden by default) -->
-      <div id="memoryPanel" class="hidden absolute inset-0 top-16 bg-surface flex flex-col">
-        <div class="h-14 shrink-0 border-b border-border px-6 flex items-center justify-between">
-          <div class="text-16 fw-650">Stored memories</div>
-          <button onclick="toggleMemories()"
-                  class="text-13 text-text-secondary fw-550 hover:text-text-primary">Close</button>
+      <!-- stored-memories drawer (slides over the chat) -->
+      <div id="memoryPanel" class="absolute inset-0 top-16 bg-bg flex flex-col">
+        <div class="h-14 shrink-0 border-b border-border px-4 sm:px-6 flex items-center justify-between">
+          <div class="max-w-measure mx-auto w-full flex items-center justify-between">
+            <div class="flex items-center gap-2 text-15 fw-650 track-tight">
+              <i class="hgi-stroke hgi-all-bookmark text-16 text-accent"></i> Stored memories
+            </div>
+            <div class="flex items-center gap-1.5">
+              <!-- Time machine: watch decay/consolidation happen live (mechanism 3). -->
+              <select id="simDays" aria-label="How much time to advance"
+                      class="bg-surface border border-border rounded-lg pl-2.5 pr-1.5 py-1.5 text-12 fw-450 text-text-secondary
+                             focus:outline-none focus:border-accent cursor-pointer">
+                <option value="14">+2 weeks</option>
+                <option value="30">+1 month</option>
+                <option value="90">+3 months</option>
+              </select>
+              <button id="simBtn" onclick="simulateTime()"
+                      class="inline-flex items-center gap-1.5 bg-accent-soft text-accent fw-550 rounded-lg px-2.5 py-1.5 text-12
+                             hover:bg-accent/15 active:scale-[.97] transition-all duration-150 disabled:opacity-50">
+                <i class="hgi-stroke hgi-time-quarter-pass text-14"></i> Advance time
+              </button>
+              <button onclick="toggleMemories()"
+                      class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:bg-sidebar transition-colors">
+                <i class="hgi-stroke hgi-cancel-01 text-16"></i>
+              </button>
+            </div>
+          </div>
         </div>
-        <div id="memList" class="flex-1 overflow-y-auto px-6 py-4 flex flex-col"></div>
+        <div id="memList" class="flex-1 overflow-y-auto px-4 sm:px-6 py-5"></div>
+      </div>
+
+      <!-- compare-candidates overlay (slides over the chat) -->
+      <div id="comparePanel" class="absolute inset-0 top-16 bg-bg flex flex-col hidden">
+        <div class="h-14 shrink-0 border-b border-border px-4 sm:px-6 flex items-center">
+          <div class="max-w-[860px] mx-auto w-full flex items-center justify-between">
+            <div class="flex items-center gap-2 text-15 fw-650 track-tight">
+              <i class="hgi-stroke hgi-arrow-data-transfer-horizontal text-16 text-accent"></i> Compare candidates
+            </div>
+            <button onclick="closeCompare()"
+                    class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:bg-sidebar transition-colors">
+              <i class="hgi-stroke hgi-cancel-01 text-16"></i>
+            </button>
+          </div>
+        </div>
+        <div class="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
+          <div class="max-w-[860px] mx-auto">
+            <div class="text-13 text-text-secondary fw-450 mb-2.5">Pick two or more candidates, then ask a question.</div>
+            <div id="cmpPicks" class="flex flex-wrap gap-2 mb-3"></div>
+            <div class="flex items-end gap-2 bg-surface border border-border rounded-xl shadow-compose px-2 py-1.5
+                        focus-within:border-accent/60 transition-colors">
+              <textarea id="cmpQ" rows="1" placeholder="e.g. Who is the better fit for a senior loom role?"
+                        oninput="autoGrow(this)"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();runCompare();}"
+                        class="flex-1 bg-transparent px-2.5 py-2 text-15 leading-relaxed placeholder:text-text-tertiary
+                               focus:outline-none resize-none max-h-40"></textarea>
+              <button id="cmpBtn" onclick="runCompare()"
+                      class="inline-flex items-center justify-center gap-1.5 bg-accent text-white fw-550 rounded-lg px-3.5 h-9 mb-0.5 text-14
+                             hover:bg-accent-hover active:scale-[.97] transition-all duration-150 shrink-0 disabled:opacity-50">
+                Compare
+              </button>
+            </div>
+            <div id="cmpResult" class="mt-6"></div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
 
 <script>
 // Plain JavaScript, no framework. Talks to the FastAPI endpoints on the same host.
-// The backend/API is unchanged — this file only restyles and re-lays-out the UI.
+// The backend/API is unchanged — this file only restyles, re-lays-out, and surfaces
+// data (category, importance, consolidation) the API already returns.
 let currentId = null;
+let sending = false;
+let lastSim = null;   // one-line summary of the most recent "advance time" run
+let allCandidates = [];        // cached list, reused by the compare picker
+const cmpSelected = new Set();  // candidate ids currently ticked for comparison
 
 const $ = (id) => document.getElementById(id);
 const chat = $('chat');
+
+// One place that knows how each memory category looks. Earthy, low-saturation — not a rainbow.
+const CATS = {
+  skill:      { label: 'skill',      color: '#0F6B5C' },
+  score:      { label: 'score',      color: '#4A6FA5' },
+  experience: { label: 'experience', color: '#9A6B3F' },
+  red_flag:   { label: 'red flag',   color: '#B4453A' },
+  summary:    { label: 'summary',    color: '#7A5A8C' },
+  note:       { label: 'note',       color: '#A6A39C' },
+};
+const CAT_ORDER = ['skill', 'score', 'experience', 'red_flag', 'summary', 'note'];
+const cat = (c) => CATS[c] || CATS.note;
 
 function timeNow() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// A quiet 0..10 importance bar, reused on chips and in the drawer. Inherits text color.
+function impMeter(importance) {
+  const pct = Math.max(0, Math.min(100, (Number(importance) / 10) * 100));
+  return `<span class="imp-track"><span class="imp-fill" style="width:${pct}%"></span></span>`;
+}
+
+// Grow the composer textarea with its content (Shift+Enter newlines), capped by max-h.
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+// Lock/unlock the composer while a request is in flight (prevents double-send).
+function setComposer(enabled) {
+  sending = !enabled;
+  $('message').disabled = !enabled;
+  const btn = $('sendBtn');
+  btn.disabled = !enabled;
+  btn.classList.toggle('opacity-40', !enabled);
+  btn.classList.toggle('cursor-not-allowed', !enabled);
+}
+
+// ---- responsive off-canvas sidebar ----
+function toggleNav() { $('sidebar').classList.toggle('open'); $('navBackdrop').classList.toggle('show'); }
+function closeNav()  { $('sidebar').classList.remove('open'); $('navBackdrop').classList.remove('show'); }
+
 // ---- candidate list (sidebar) ----
 async function loadCandidates() {
   const list = await (await fetch('/candidates')).json();
+  allCandidates = list;   // keep for the compare picker
   const box = $('candList');
   box.innerHTML = '';
+  if (!list.length) {
+    box.innerHTML =
+      `<div class="mx-2 mt-2 px-3 py-4 rounded-lg border border-dashed border-border text-13 text-text-secondary fw-450 leading-relaxed">` +
+      `No candidates yet. Add one above to start building their memory.</div>`;
+    return;
+  }
   for (const c of list) {
     const b = document.createElement('button');
     b.onclick = () => selectCandidate(c);
     const active = c.id === currentId;
     b.className =
-      'w-full text-left rounded px-3 py-2 flex items-center gap-2.5 transition-colors ' +
-      (active ? 'bg-accent-soft text-accent fw-550' : 'text-text-primary hover:bg-bg fw-450');
+      'w-full text-left rounded-lg px-2.5 py-2 flex items-center gap-2.5 transition-colors duration-150 ' +
+      (active ? 'bg-accent-soft text-accent fw-550' : 'text-text-primary hover:bg-surface fw-450');
     b.innerHTML =
-      `<i class="hgi-stroke hgi-user-circle text-20 ${active ? 'text-accent' : 'text-text-secondary'}"></i>` +
-      `<span class="min-w-0"><span class="block text-14 truncate">${esc(c.name)}</span>` +
-      (c.role ? `<span class="block text-13 ${active ? 'text-accent' : 'text-text-secondary'} truncate">${esc(c.role)}</span>` : '') +
+      `<span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${active ? 'bg-accent text-white' : 'bg-surface border border-border text-text-secondary'}">` +
+        `<i class="hgi-stroke hgi-user text-14"></i></span>` +
+      `<span class="min-w-0"><span class="block text-14 leading-tight truncate">${esc(c.name)}</span>` +
+      (c.role ? `<span class="block text-12 leading-tight mt-0.5 ${active ? 'text-accent/80' : 'text-text-secondary'} truncate">${esc(c.role)}</span>` : '') +
       `</span>`;
     box.appendChild(b);
   }
@@ -182,11 +392,14 @@ async function loadCandidates() {
 
 function selectCandidate(c) {
   currentId = c.id;
+  lastSim = null;   // reset the time-machine banner for the new candidate
   $('hdrName').textContent = c.name;
   $('hdrRole').textContent = c.role || '';
   $('empty').classList.add('hidden');
   chat.innerHTML = '';
-  if (!$('memoryPanel').classList.contains('hidden')) toggleMemories(); // close drawer on switch
+  if ($('memoryPanel').classList.contains('open')) toggleMemories(); // close drawer on switch
+  closeCompare();   // close compare overlay if it was open
+  closeNav();       // collapse mobile sidebar after choosing
   loadCandidates(); // re-render sidebar highlight
   $('message').focus();
 }
@@ -195,28 +408,35 @@ async function createCandidate() {
   const name = $('newName').value.trim();
   if (!name) return;
   const role = $('newRole').value.trim();
-  const c = await (await fetch('/candidates', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, role }),
-  })).json();
-  $('newName').value = '';
-  $('newRole').value = '';
-  await loadCandidates();
-  selectCandidate(c);
+  try {
+    const c = await (await fetch('/candidates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, role }),
+    })).json();
+    $('newName').value = '';
+    $('newRole').value = '';
+    await loadCandidates();
+    selectCandidate(c);
+  } catch (e) {
+    errorRow("Couldn't add that candidate. Is the server running?");
+  }
 }
 
 // ---- chat message rendering ----
+// Notion-AI style: user messages are a soft fill bubble (no border); the assistant
+// reply flows as plain text in the reading column. Tiny eyebrow labels, quietly.
 function bubble(who, text) {
+  const you = who === 'you';
   const wrap = document.createElement('div');
-  wrap.className = 'flex flex-col gap-1 ' + (who === 'you' ? 'items-end' : 'items-start');
+  wrap.className = 'msg-in flex flex-col gap-1.5 ' + (you ? 'items-end' : 'items-start');
   const label = document.createElement('div');
-  label.className = 'text-13 text-text-secondary fw-450 px-1';
-  label.textContent = who === 'you' ? 'You' : 'Assistant';
+  label.className = 'text-11 text-text-tertiary fw-550 track-wide uppercase px-0.5';
+  label.textContent = you ? 'You' : 'Assistant';
   const body = document.createElement('div');
-  body.className = who === 'you'
-    ? 'max-w-[80%] bg-surface border border-border rounded px-3.5 py-2.5 text-14'
-    : 'max-w-[80%] text-14 leading-relaxed px-1';
+  body.className = you
+    ? 'max-w-[85%] bg-user-bubble rounded-xl rounded-tr-sm px-4 py-2.5 text-15 leading-relaxed whitespace-pre-wrap'
+    : 'max-w-[92%] text-15 leading-[1.62] whitespace-pre-wrap text-text-primary px-0.5';
   body.textContent = text;
   wrap.appendChild(label);
   wrap.appendChild(body);
@@ -225,88 +445,321 @@ function bubble(who, text) {
   return wrap;
 }
 
-// quiet, uncolored note that memories were recalled for this turn
+// Phase-stepped thinking indicator. The backend runs retrieve→reason→extract
+// server-side and returns them in ONE response, so this steps through the phase
+// labels on a client timer — a faithful view of the real sequence, not a fake.
+// ponytail: client-timed phase cascade; swap to SSE/streaming for true per-step timing.
+function thinkingRow() {
+  const phases = ['Recalling memories', 'Thinking', 'Learning'];
+  const row = document.createElement('div');
+  row.className = 'msg-in flex items-center gap-2.5 px-0.5 text-13 text-text-secondary fw-450';
+  const dot = document.createElement('span'); dot.className = 'pulse-dot';
+  const label = document.createElement('span'); label.className = 'label-swap'; label.textContent = phases[0];
+  row.appendChild(dot); row.appendChild(label);
+  chat.appendChild(row);
+  chat.scrollTop = chat.scrollHeight;
+
+  let i = 0;
+  const timer = setInterval(() => {
+    i = Math.min(i + 1, phases.length - 1);
+    // re-trigger the little crossfade on each phase change
+    label.classList.remove('label-swap'); void label.offsetWidth; label.classList.add('label-swap');
+    label.textContent = phases[i];
+    if (i === phases.length - 1) clearInterval(timer); // hold on "Learning" until done
+  }, 750);
+
+  const stop = () => { clearInterval(timer); row.remove(); };
+  return { done: stop, remove: stop };
+}
+
+// quiet, uncolored note that memories were recalled for this turn (mechanism 2)
 function recalledNote(count) {
   const d = document.createElement('div');
-  d.className = 'text-13 text-text-secondary fw-450 px-1 flex items-center gap-1.5';
-  d.innerHTML = `<i class="hgi-stroke hgi-all-bookmark text-14"></i> Recalled ${count} ${count === 1 ? 'memory' : 'memories'}`;
+  d.className = 'text-12 text-text-secondary fw-450 px-0.5 flex items-center gap-1.5';
+  d.innerHTML = `<i class="hgi-stroke hgi-all-bookmark text-14 text-text-tertiary"></i> Recalled ${count} ${count === 1 ? 'memory' : 'memories'}`;
   chat.appendChild(d);
 }
 
+// quiet note that decay/consolidation ran (mechanism 3 — previously invisible)
+function consolidationNote(n) {
+  const d = document.createElement('div');
+  d.className = 'text-12 text-text-secondary fw-450 px-0.5 flex items-center gap-2';
+  d.innerHTML =
+    `<span class="cat-dot" style="background:${CATS.summary.color}"></span>` +
+    `Consolidated ${n} ${n === 1 ? 'memory' : 'memories'} into a summary`;
+  chat.appendChild(d);
+}
+
+// inline, quiet error row — never fail silently
+function errorRow(msg) {
+  const d = document.createElement('div');
+  d.className = 'text-13 text-danger fw-450 px-0.5 flex items-center gap-2';
+  d.innerHTML = `<i class="hgi-stroke hgi-alert-02 text-14"></i> ${esc(msg)}`;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
+
 // SIGNATURE ELEMENT: a newly-extracted fact, as an accent chip that slides up.
-function memoryChip(fact) {
+// Carries the category (dot + label) and importance (meter) the API returns.
+function memoryChip(f) {
+  const c = cat(f.category);
+  const upd = !!f.replaces;   // this fact updated an old belief (mechanism 1: contradiction handling)
   const chip = document.createElement('span');
-  chip.className = 'chip-in inline-flex items-center gap-1.5 bg-accent-soft text-accent rounded px-2.5 py-1 text-13 fw-550';
+  chip.className = 'chip-in inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-13 fw-450 border ' +
+    (upd ? 'bg-accent-soft border-accent/30 text-accent' : 'bg-surface border-border text-text-primary');
   chip.innerHTML =
-    `<i class="hgi-stroke hgi-bookmark-01 text-14"></i>` +
-    `<span>${esc(fact)}</span>` +
-    `<span class="font-mono text-text-secondary fw-450">${timeNow()}</span>`;
+    `<span class="cat-dot" style="background:${upd ? '#0F6B5C' : c.color}"></span>` +
+    `<span>${esc(f.fact)}</span>` +
+    `<span class="${upd ? 'fw-550' : 'text-text-tertiary fw-450'}">${upd ? 'updated' : c.label}</span>` +
+    `<span style="color:${c.color}">${impMeter(f.importance)}</span>`;
   return chip;
 }
 
+// The agent changed its mind: an old fact was retired in favor of a new one.
+// This is the "wow" — memory that reconciles, not just accumulates.
+function updateNote(oldFact, newFact) {
+  const d = document.createElement('div');
+  d.className = 'text-12 text-text-secondary fw-450 px-0.5 flex items-start gap-2';
+  d.innerHTML =
+    `<span class="cat-dot mt-1.5" style="background:#0F6B5C"></span>` +
+    `<span>Updated belief — <span class="line-through opacity-60">${esc(oldFact)}</span> &rarr; ${esc(newFact)}</span>`;
+  chat.appendChild(d);
+}
+
 async function send() {
-  if (!currentId) return;
+  if (!currentId || sending) return;
   const input = $('message');
   const message = input.value.trim();
   if (!message) return;
   input.value = '';
+  autoGrow(input);
   bubble('you', message);
 
-  const data = await (await fetch(`/candidates/${currentId}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  })).json();
+  setComposer(false);
+  const think = thinkingRow();
 
-  if (data.recalled && data.recalled.length) recalledNote(data.recalled.length);
-  bubble('agent', data.reply);
-
-  // Newly learned facts appear as chips directly under the message that triggered them.
-  if (data.new_facts && data.new_facts.length) {
-    const row = document.createElement('div');
-    row.className = 'flex flex-wrap gap-2 px-1';
-    chat.appendChild(row);
-    // stagger slightly so multiple chips cascade in
-    data.new_facts.forEach((f, i) => {
-      setTimeout(() => { row.appendChild(memoryChip(f.fact)); chat.scrollTop = chat.scrollHeight; }, i * 90);
+  try {
+    const res = await fetch(`/candidates/${currentId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    think.done();
+
+    if (data.recalled && data.recalled.length) recalledNote(data.recalled.length);
+    bubble('agent', data.reply);
+
+    // Newly learned facts appear as chips directly under the message that triggered them.
+    if (data.new_facts && data.new_facts.length) {
+      // Belief updates first, as an explicit "changed its mind" line.
+      data.new_facts.forEach(f => { if (f.replaces) updateNote(f.replaces, f.fact); });
+      const row = document.createElement('div');
+      row.className = 'flex flex-wrap gap-2 px-0.5';
+      chat.appendChild(row);
+      // stagger slightly so multiple chips cascade in
+      data.new_facts.forEach((f, i) => {
+        setTimeout(() => { row.appendChild(memoryChip(f)); chat.scrollTop = chat.scrollHeight; }, i * 90);
+      });
+    }
+
+    // Mechanism 3 made visible: consolidation housekeeping for this turn.
+    if (data.housekeeping && data.housekeeping.consolidated > 0) {
+      consolidationNote(data.housekeeping.consolidated);
+    }
+  } catch (e) {
+    think.remove();
+    errorRow('Something went wrong reaching the assistant. Please try again.');
+  } finally {
+    setComposer(true);
+    $('message').focus();
+    chat.scrollTop = chat.scrollHeight;
   }
-  chat.scrollTop = chat.scrollHeight;
 }
 
 // ---- stored-memories drawer ----
 async function toggleMemories() {
   const panel = $('memoryPanel');
-  const hidden = panel.classList.contains('hidden');
-  if (hidden) {
+  const open = panel.classList.contains('open');
+  if (!open) {
     if (!currentId) return;
     await loadMemories();
-    panel.classList.remove('hidden');
+    panel.classList.add('open');
     $('memBtnLabel').textContent = 'Hide memories';
   } else {
-    panel.classList.add('hidden');
+    panel.classList.remove('open');
     $('memBtnLabel').textContent = 'Stored memories';
   }
+}
+
+// Fast-forward this candidate's memory clock: the server ages the memories and
+// runs the REAL decay + consolidation, then we re-render so forgetting is visible.
+async function simulateTime() {
+  if (!currentId) return;
+  const days = Number($('simDays').value) || 14;
+  const btn = $('simBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/candidates/${currentId}/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    const bits = [`${days} days passed — importance decayed`];
+    if (d.archived) bits.push(`${d.archived} ${d.archived === 1 ? 'memory' : 'memories'} faded away`);
+    if (d.consolidated) bits.push(`${d.consolidated} consolidated into a summary`);
+    lastSim = bits.join(' · ');
+    await loadMemories();
+  } catch (e) {
+    lastSim = null;
+    $('memList').insertAdjacentHTML('afterbegin',
+      `<div class="text-13 text-danger fw-450 mb-4 flex items-center gap-2">` +
+      `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn't advance time. Is the server running?</div>`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// A quiet banner summarizing the last time-machine run (mechanism 3, made visible).
+function simBanner() {
+  if (!lastSim) return '';
+  return `<div class="chip-in flex items-center gap-2 bg-accent-soft text-accent rounded-lg px-3 py-2 text-13 fw-450 mb-5">` +
+         `<i class="hgi-stroke hgi-time-quarter-pass text-14"></i> ${esc(lastSim)}</div>`;
+}
+
+// ---- compare candidates (cross-candidate reasoning) ----
+function openCompare() {
+  if ($('memoryPanel').classList.contains('open')) toggleMemories(); // don't stack overlays
+  $('comparePanel').classList.remove('hidden');
+  renderCmpPicks();
+}
+function closeCompare() { $('comparePanel').classList.add('hidden'); }
+
+function toggleCmpPick(id) {
+  cmpSelected.has(id) ? cmpSelected.delete(id) : cmpSelected.add(id);
+  renderCmpPicks();
+}
+
+function renderCmpPicks() {
+  const box = $('cmpPicks');
+  if (!allCandidates.length) {
+    box.innerHTML = `<div class="text-13 text-text-tertiary fw-450">Add at least two candidates first.</div>`;
+    return;
+  }
+  box.innerHTML = allCandidates.map(c => {
+    const on = cmpSelected.has(c.id);
+    return `<button onclick="toggleCmpPick(${c.id})" class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-13 fw-450 transition-colors ` +
+      (on ? 'bg-accent-soft border-accent/40 text-accent' : 'bg-surface border-border text-text-secondary hover:text-text-primary') + '">' +
+      `<i class="hgi-stroke ${on ? 'hgi-checkmark-circle-02' : 'hgi-add-circle'} text-14"></i> ${esc(c.name)}</button>`;
+  }).join('');
+}
+
+async function runCompare() {
+  const ids = [...cmpSelected];
+  const question = $('cmpQ').value.trim();
+  const res = $('cmpResult'), btn = $('cmpBtn');
+  if (ids.length < 2) { res.innerHTML = cmpHint('Pick at least two candidates to compare.'); return; }
+  if (!question)      { res.innerHTML = cmpHint('Type a question first.'); return; }
+
+  btn.disabled = true;
+  res.innerHTML = `<div class="flex items-center gap-2.5 text-13 text-text-secondary fw-450">` +
+                  `<span class="pulse-dot"></span> Recalling each candidate’s memories…</div>`;
+  try {
+    const r = await fetch('/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_ids: ids, question }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    renderCompare(await r.json());
+  } catch (e) {
+    res.innerHTML = `<div class="text-13 text-danger fw-450 flex items-center gap-2">` +
+                    `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn’t compare. Is the server running?</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function cmpHint(msg) {
+  return `<div class="text-13 text-text-secondary fw-450 flex items-center gap-2">` +
+         `<i class="hgi-stroke hgi-information-circle text-14 text-text-tertiary"></i> ${esc(msg)}</div>`;
+}
+
+// Recommendation on top, then a column per candidate showing exactly which
+// remembered facts fed the decision (mechanism 2, made cross-candidate).
+function renderCompare(d) {
+  const cols = d.candidates.map(c =>
+    `<div class="flex-1 min-w-[220px] bg-surface border border-border rounded-xl p-4">` +
+      `<div class="flex items-center gap-2 mb-2.5">` +
+        `<span class="w-6 h-6 rounded-md bg-accent-soft text-accent flex items-center justify-center shrink-0">` +
+          `<i class="hgi-stroke hgi-user text-13"></i></span>` +
+        `<span class="fw-650 text-14 truncate">${esc(c.name)}</span>` +
+        (c.role ? `<span class="text-12 text-text-secondary truncate">${esc(c.role)}</span>` : '') +
+      `</div>` +
+      (c.recalled.length
+        ? `<ul class="flex flex-col gap-1.5">` + c.recalled.map(f =>
+            `<li class="text-13 text-text-secondary fw-450 flex gap-2">` +
+            `<span class="cat-dot mt-1.5 shrink-0" style="background:#0F6B5C"></span><span>${esc(f)}</span></li>`).join('') + `</ul>`
+        : `<div class="text-13 text-text-tertiary fw-450 italic">No relevant memories yet.</div>`) +
+    `</div>`).join('');
+
+  $('cmpResult').innerHTML =
+    `<div class="chip-in bg-accent-soft rounded-xl p-4 mb-4">` +
+      `<div class="text-11 fw-650 uppercase track-wide text-accent mb-1.5">Recommendation</div>` +
+      `<div class="text-14 text-text-primary leading-relaxed whitespace-pre-wrap">${esc(d.reply)}</div></div>` +
+    `<div class="flex flex-wrap gap-3">${cols}</div>`;
 }
 
 async function loadMemories() {
   const mems = await (await fetch(`/candidates/${currentId}/memories`)).json();
   const box = $('memList');
-  box.innerHTML = '';
+  box.innerHTML = simBanner();
   if (!mems.length) {
-    box.innerHTML = `<div class="text-14 text-text-secondary fw-450 py-6">No memories stored yet.</div>`;
+    box.insertAdjacentHTML('beforeend',
+      `<div class="text-center text-text-secondary py-16">` +
+      `<i class="hgi-stroke hgi-inbox text-28 block mb-2 text-text-tertiary"></i>` +
+      `<div class="text-14 fw-450">No memories stored yet.</div></div>`);
     return;
   }
-  for (const m of mems) {
-    const row = document.createElement('div');
-    row.className = 'py-3 border-b border-border flex items-start gap-3';
-    row.innerHTML =
-      `<i class="hgi-stroke hgi-bookmark-01 text-16 text-accent mt-0.5 shrink-0"></i>` +
-      `<div class="min-w-0 flex-1">` +
-        `<div class="text-14 fw-450">${esc(m.fact_text)}</div>` +
-        `<div class="text-13 text-text-secondary font-mono mt-0.5">${esc(m.category)} · importance ${m.importance}</div>` +
-      `</div>`;
-    box.appendChild(row);
+
+  // Group by category so decay/importance is legible at a glance (mechanism 3).
+  const groups = {};
+  for (const m of mems) (groups[m.category] || (groups[m.category] = [])).push(m);
+  const cats = Object.keys(groups).sort((a, b) => {
+    const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  for (const c of cats) {
+    const info = cat(c);
+    const section = document.createElement('div');
+    section.className = 'mb-6';
+
+    const header = document.createElement('div');
+    header.className = 'flex items-center gap-2 pb-2 mb-1 border-b border-hairline';
+    header.innerHTML =
+      `<span class="cat-dot" style="background:${info.color}"></span>` +
+      `<span class="text-11 fw-650 uppercase track-wide" style="color:${info.color}">${info.label}</span>` +
+      `<span class="text-11 text-text-tertiary fw-550">${groups[c].length}</span>`;
+    section.appendChild(header);
+
+    for (const m of groups[c]) {
+      const row = document.createElement('div');
+      row.className = 'py-2.5 flex items-start gap-3';
+      row.innerHTML =
+        `<div class="min-w-0 flex-1">` +
+          `<div class="text-14 fw-450 leading-relaxed">${esc(m.fact_text)}</div>` +
+          `<div class="mt-1.5 flex items-center gap-2 text-12 text-text-tertiary">` +
+            `<span class="font-mono">importance ${m.importance}</span>` +
+            `<span style="color:${info.color}">${impMeter(m.importance)}</span>` +
+          `</div>` +
+        `</div>`;
+      section.appendChild(row);
+    }
+    box.appendChild(section);
   }
 }
 

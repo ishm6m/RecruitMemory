@@ -32,6 +32,15 @@ class ChatIn(BaseModel):
     message: str
 
 
+class SimulateIn(BaseModel):
+    days: int = 14
+
+
+class CompareIn(BaseModel):
+    candidate_ids: list[int]
+    question: str
+
+
 @app.post("/candidates")
 def create_candidate(body: NewCandidate):
     return db.create_candidate(body.name, body.role)
@@ -79,6 +88,27 @@ def chat(candidate_id: int, body: ChatIn):
         "new_facts": new_facts,
         "housekeeping": housekeeping,
     }
+
+
+@app.post("/compare")
+def compare(body: CompareIn):
+    """Cross-candidate reasoning: recall each candidate's memories and weigh them."""
+    ids = [i for i in body.candidate_ids if db.get_candidate(i)]
+    if len(ids) < 2:
+        raise HTTPException(400, "pick at least two existing candidates")
+    if not body.question.strip():
+        raise HTTPException(400, "a question is required")
+    return memory.compare(ids, body.question)
+
+
+@app.post("/candidates/{candidate_id}/simulate")
+def simulate(candidate_id: int, body: SimulateIn):
+    """Demo control: fast-forward this candidate's memory clock and run decay."""
+    if not db.get_candidate(candidate_id):
+        raise HTTPException(404, "candidate not found")
+    result = memory.simulate_days(candidate_id, max(1, body.days))
+    result["days"] = max(1, body.days)
+    return result
 
 
 @app.get("/candidates/{candidate_id}/memories")

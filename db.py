@@ -118,6 +118,17 @@ def touch_memories(memory_ids):
     _c.commit()
 
 
+def age_memories(candidate_id, seconds):
+    """Backdate every active memory's last-access time by `seconds` — i.e. make
+    the decay curve behave as if that much time has passed. Demo-only helper."""
+    _c.execute(
+        "UPDATE memories SET last_accessed_at = last_accessed_at - ? "
+        "WHERE candidate_id = ? AND archived = 0",
+        (seconds, candidate_id),
+    )
+    _c.commit()
+
+
 def update_importance(memory_id, importance):
     _c.execute("UPDATE memories SET importance = ? WHERE id = ?", (importance, memory_id))
     _c.commit()
