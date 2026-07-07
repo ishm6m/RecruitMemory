@@ -1,0 +1,23 @@
+# docker-compose.yml — one command to build + run the whole app.
+#   docker compose up --build   (start)
+#   docker compose down         (stop)
+#
+# One container ("web"). Secrets come from your .env at runtime (never baked
+# into the image), and the database lives on a named volume so your candidates
+# and memories survive restarts.
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"          # host:container — open http://localhost:8000
+    env_file:
+      - .env                 # loads QWEN_API_KEY, OSS_*, etc. at runtime
+    environment:
+      DB_PATH: /data/recruitmemory.db   # store the DB on the mounted volume
+    volumes:
+      - recruitmemory-data:/data        # persists across `down`/`up`
+    restart: unless-stopped  # auto-restart if it crashes or the server reboots
+
+volumes:
+  recruitmemory-data:

@@ -1,0 +1,9 @@
+# Keep the image small and never copy secrets or local junk into it.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.db
+.env
+.git/
+.gitignore

@@ -1,0 +1,128 @@
+"""
+db.py — SQLite schema + a tiny data-access layer.
+
+Plain language: this file owns the database file (recruitmemory.db). It creates
+two tables the first time it runs, and provides small helper functions so the
+rest of the app never has to write raw SQL. SQLite is just a single file on
+disk — no server to install.
+"""
+
+import sqlite3
+import json
+import time
+import os
+
+# Where the SQLite file lives. Defaults to the project folder for local runs;
+# in Docker we point DB_PATH at a mounted volume so data survives restarts.
+DB_PATH = os.getenv("DB_PATH", "recruitmemory.db")
+
+
+def _conn():
+    # check_same_thread=False lets FastAPI's worker threads share the connection.
+    # ponytail: single shared connection is fine for a demo; use a pool if scaling.
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row  # rows behave like dicts (row["fact_text"])
+    return conn
+
+
+_c = _conn()
+
+
+def init_db():
+    """Create the tables if they don't exist yet. Safe to call every startup."""
+    _c.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS candidates (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            role       TEXT,
+            created_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS memories (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id     INTEGER NOT NULL,
+            fact_text        TEXT NOT NULL,
+            category         TEXT,
+            importance       REAL NOT NULL,     -- 1..10, decays over time
+            embedding        TEXT NOT NULL,     -- JSON array of floats
+            created_at       REAL NOT NULL,
+            last_accessed_at REAL NOT NULL,
+            archived         INTEGER NOT NULL DEFAULT 0,  -- 0 = active, 1 = archived
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id)
+        );
+        """
+    )
+    _c.commit()
+
+
+# ---------- candidates ----------
+
+def create_candidate(name, role=""):
+    cur = _c.execute(
+        "INSERT INTO candidates (name, role, created_at) VALUES (?, ?, ?)",
+        (name, role, time.time()),
+    )
+    _c.commit()
+    return {"id": cur.lastrowid, "name": name, "role": role}
+
+
+def list_candidates():
+    rows = _c.execute("SELECT * FROM candidates ORDER BY created_at DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_candidate(candidate_id):
+    row = _c.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+    return dict(row) if row else None
+
+
+# ---------- memories ----------
+
+def add_memory(candidate_id, fact_text, category, importance, embedding):
+    now = time.time()
+    _c.execute(
+        """INSERT INTO memories
+           (candidate_id, fact_text, category, importance, embedding,
+            created_at, last_accessed_at, archived)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
+        (candidate_id, fact_text, category, importance,
+         json.dumps(embedding), now, now),
+    )
+    _c.commit()
+
+
+def get_active_memories(candidate_id):
+    """All non-archived memories for a candidate, embeddings decoded to lists."""
+    rows = _c.execute(
+        "SELECT * FROM memories WHERE candidate_id = ? AND archived = 0",
+        (candidate_id,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["embedding"] = json.loads(d["embedding"])
+        out.append(d)
+    return out
+
+
+def touch_memories(memory_ids):
+    """Mark memories as just-accessed (resets their recency for decay)."""
+    if not memory_ids:
+        return
+    now = time.time()
+    _c.executemany(
+        "UPDATE memories SET last_accessed_at = ? WHERE id = ?",
+        [(now, mid) for mid in memory_ids],
+    )
+    _c.commit()
+
+
+def update_importance(memory_id, importance):
+    _c.execute("UPDATE memories SET importance = ? WHERE id = ?", (importance, memory_id))
+    _c.commit()
+
+
+def archive_memory(memory_id):
+    _c.execute("UPDATE memories SET archived = 1 WHERE id = ?", (memory_id,))
+    _c.commit()

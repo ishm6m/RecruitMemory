@@ -1,0 +1,11 @@
+# Secrets — never commit these
+.env
+
+# Database file (contains candidate data)
+*.db
+
+# Python noise
+__pycache__/
+*.pyc
+.venv/
+venv/

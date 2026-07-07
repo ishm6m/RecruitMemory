@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RecruitMemory — Jabbar Jute Mills</title>
+  <!-- Inline SVG favicon (accent bookmark) so the browser stops 404-ing on /favicon.ico. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F6B5C'/%3E%3Cpath d='M11 8h10a1 1 0 0 1 1 1v15l-6-4-6 4V9a1 1 0 0 1 1-1z' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+
+  <!-- Hugeicons stroke-rounded icon font (free, no account/API key needed). -->
+  <link rel="stylesheet" href="https://cdn.hugeicons.com/font/hgi-stroke-rounded.css" />
+
+  <!-- Tailwind via CDN, configured with the exact design tokens from the brief. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:            '#FAFAF9',
+            surface:       '#FFFFFF',
+            border:        '#E7E5E4',
+            'text-primary':'#1C1917',
+            'text-secondary':'#78716C',
+            accent:        '#0F6B5C',
+            'accent-soft': '#E4F2EF',
+            danger:        '#B42318',
+          },
+          fontFamily: {
+            sans: ['-apple-system','BlinkMacSystemFont','"Segoe UI"','sans-serif'],
+            mono: ['ui-monospace','"SF Mono"','"Cascadia Code"','monospace'],
+          },
+          fontSize: {  // the only sizes allowed by the brief
+            '13': '13px', '14': '14px', '16': '16px', '20': '20px', '28': '28px',
+          },
+          borderRadius: { DEFAULT: '8px' }, // 8px on controls/chips; panels use rounded-none
+          boxShadow: {   // the ONE soft shadow, reserved for the compose bar
+            compose: '0 1px 2px rgba(28,25,23,.04), 0 2px 8px rgba(28,25,23,.06)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Small custom CSS: only the two things Tailwind can't express cleanly —
+       the memory-chip motion, and a consistent keyboard focus ring. -->
+  <style>
+    /* Hierarchy via weight, not size (brief: 450/550/650). */
+    .fw-450 { font-weight: 450; }
+    .fw-550 { font-weight: 550; }
+    .fw-650 { font-weight: 650; }
+
+    /* Signature motion — reserved ONLY for a newly-extracted memory chip. */
+    @keyframes chipIn { from { opacity: 0; transform: translateY(6px); }
+                        to   { opacity: 1; transform: translateY(0); } }
+    .chip-in { animation: chipIn 150ms ease-out both; }
+
+    /* Accessibility: one visible focus ring on every interactive element. */
+    a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid #0F6B5C;
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+    /* Thin, quiet scrollbars so the chat area stays calm. */
+    #chat::-webkit-scrollbar, #candList::-webkit-scrollbar, #memList::-webkit-scrollbar { width: 8px; }
+    #chat::-webkit-scrollbar-thumb, #candList::-webkit-scrollbar-thumb,
+    #memList::-webkit-scrollbar-thumb { background: #E7E5E4; border-radius: 8px; }
+  </style>
+</head>
+
+<body class="h-screen bg-bg text-text-primary font-sans text-14 fw-450 antialiased">
+  <div class="flex h-screen">
+
+    <!-- ============ SIDEBAR: candidate list + create form ============ -->
+    <aside class="w-72 shrink-0 bg-surface border-r border-border flex flex-col">
+      <!-- brand -->
+      <div class="px-5 pt-5 pb-4">
+        <div class="text-16 fw-650 tracking-tight">RecruitMemory</div>
+        <div class="text-13 text-text-secondary fw-450">Jabbar Jute Mills · hiring assistant</div>
+      </div>
+
+      <!-- create candidate -->
+      <div class="px-4 pb-4 flex flex-col gap-2">
+        <input id="newName" placeholder="Candidate name"
+               class="w-full bg-bg border border-border rounded px-3 py-2 text-14 placeholder:text-text-secondary" />
+        <input id="newRole" placeholder="Role (optional)"
+               class="w-full bg-bg border border-border rounded px-3 py-2 text-14 placeholder:text-text-secondary" />
+        <button onclick="createCandidate()"
+                class="inline-flex items-center justify-center gap-1.5 bg-accent text-white fw-550 rounded px-3 py-2 text-14 hover:opacity-90 transition-opacity">
+          <i class="hgi-stroke hgi-add-01 text-16"></i> Add candidate
+        </button>
+      </div>
+
+      <div class="px-5 pt-1 pb-2 text-13 text-text-secondary fw-550 uppercase tracking-wide">Candidates</div>
+
+      <!-- candidate list -->
+      <div id="candList" class="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-0.5"></div>
+    </aside>
+
+    <!-- ============ MAIN PANEL: chat ============ -->
+    <main class="flex-1 min-w-0 flex flex-col relative">
+      <!-- header: who we're talking about -->
+      <header class="h-16 shrink-0 border-b border-border px-6 flex items-center justify-between">
+        <div>
+          <div id="hdrName" class="text-20 fw-650 leading-tight">Select a candidate</div>
+          <div id="hdrRole" class="text-13 text-text-secondary fw-450"></div>
+        </div>
+        <button onclick="toggleMemories()"
+                class="inline-flex items-center gap-1.5 bg-surface border border-border text-text-primary fw-550 rounded px-3 py-1.5 text-14 hover:bg-bg transition-colors">
+          <i class="hgi-stroke hgi-all-bookmark text-16"></i> <span id="memBtnLabel">Stored memories</span>
+        </button>
+      </header>
+
+      <!-- conversation -->
+      <div id="chat" class="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5"></div>
+
+      <!-- empty state (shown until a candidate is picked) -->
+      <div id="empty" class="absolute inset-0 top-16 flex items-center justify-center pointer-events-none">
+        <div class="text-center text-text-secondary">
+          <i class="hgi-stroke hgi-user-circle text-28 block mb-2"></i>
+          <div class="text-14 fw-450">Pick or add a candidate to start.</div>
+        </div>
+      </div>
+
+      <!-- compose bar: the ONE place a shadow appears -->
+      <div class="shrink-0 px-6 pb-6 pt-2">
+        <div class="flex items-center gap-2 bg-surface border border-border rounded shadow-compose px-2 py-1.5">
+          <input id="message" placeholder="Say something about this candidate…"
+                 onkeydown="if(event.key==='Enter')send()"
+                 class="flex-1 bg-transparent px-2 py-2 text-16 placeholder:text-text-secondary focus:outline-none" />
+          <button onclick="send()" aria-label="Send"
+                  class="inline-flex items-center justify-center bg-accent text-white rounded w-10 h-10 hover:opacity-90 transition-opacity shrink-0">
+            <i class="hgi-stroke hgi-sent text-16"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- stored-memories drawer (slides over the chat; hidden by default) -->
+      <div id="memoryPanel" class="hidden absolute inset-0 top-16 bg-surface flex flex-col">
+        <div class="h-14 shrink-0 border-b border-border px-6 flex items-center justify-between">
+          <div class="text-16 fw-650">Stored memories</div>
+          <button onclick="toggleMemories()"
+                  class="text-13 text-text-secondary fw-550 hover:text-text-primary">Close</button>
+        </div>
+        <div id="memList" class="flex-1 overflow-y-auto px-6 py-4 flex flex-col"></div>
+      </div>
+    </main>
+  </div>
+
+<script>
+// Plain JavaScript, no framework. Talks to the FastAPI endpoints on the same host.
+// The backend/API is unchanged — this file only restyles and re-lays-out the UI.
+let currentId = null;
+
+const $ = (id) => document.getElementById(id);
+const chat = $('chat');
+
+function timeNow() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ---- candidate list (sidebar) ----
+async function loadCandidates() {
+  const list = await (await fetch('/candidates')).json();
+  const box = $('candList');
+  box.innerHTML = '';
+  for (const c of list) {
+    const b = document.createElement('button');
+    b.onclick = () => selectCandidate(c);
+    const active = c.id === currentId;
+    b.className =
+      'w-full text-left rounded px-3 py-2 flex items-center gap-2.5 transition-colors ' +
+      (active ? 'bg-accent-soft text-accent fw-550' : 'text-text-primary hover:bg-bg fw-450');
+    b.innerHTML =
+      `<i class="hgi-stroke hgi-user-circle text-20 ${active ? 'text-accent' : 'text-text-secondary'}"></i>` +
+      `<span class="min-w-0"><span class="block text-14 truncate">${esc(c.name)}</span>` +
+      (c.role ? `<span class="block text-13 ${active ? 'text-accent' : 'text-text-secondary'} truncate">${esc(c.role)}</span>` : '') +
+      `</span>`;
+    box.appendChild(b);
+  }
+}
+
+function selectCandidate(c) {
+  currentId = c.id;
+  $('hdrName').textContent = c.name;
+  $('hdrRole').textContent = c.role || '';
+  $('empty').classList.add('hidden');
+  chat.innerHTML = '';
+  if (!$('memoryPanel').classList.contains('hidden')) toggleMemories(); // close drawer on switch
+  loadCandidates(); // re-render sidebar highlight
+  $('message').focus();
+}
+
+async function createCandidate() {
+  const name = $('newName').value.trim();
+  if (!name) return;
+  const role = $('newRole').value.trim();
+  const c = await (await fetch('/candidates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, role }),
+  })).json();
+  $('newName').value = '';
+  $('newRole').value = '';
+  await loadCandidates();
+  selectCandidate(c);
+}
+
+// ---- chat message rendering ----
+function bubble(who, text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex flex-col gap-1 ' + (who === 'you' ? 'items-end' : 'items-start');
+  const label = document.createElement('div');
+  label.className = 'text-13 text-text-secondary fw-450 px-1';
+  label.textContent = who === 'you' ? 'You' : 'Assistant';
+  const body = document.createElement('div');
+  body.className = who === 'you'
+    ? 'max-w-[80%] bg-surface border border-border rounded px-3.5 py-2.5 text-14'
+    : 'max-w-[80%] text-14 leading-relaxed px-1';
+  body.textContent = text;
+  wrap.appendChild(label);
+  wrap.appendChild(body);
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+  return wrap;
+}
+
+// quiet, uncolored note that memories were recalled for this turn
+function recalledNote(count) {
+  const d = document.createElement('div');
+  d.className = 'text-13 text-text-secondary fw-450 px-1 flex items-center gap-1.5';
+  d.innerHTML = `<i class="hgi-stroke hgi-all-bookmark text-14"></i> Recalled ${count} ${count === 1 ? 'memory' : 'memories'}`;
+  chat.appendChild(d);
+}
+
+// SIGNATURE ELEMENT: a newly-extracted fact, as an accent chip that slides up.
+function memoryChip(fact) {
+  const chip = document.createElement('span');
+  chip.className = 'chip-in inline-flex items-center gap-1.5 bg-accent-soft text-accent rounded px-2.5 py-1 text-13 fw-550';
+  chip.innerHTML =
+    `<i class="hgi-stroke hgi-bookmark-01 text-14"></i>` +
+    `<span>${esc(fact)}</span>` +
+    `<span class="font-mono text-text-secondary fw-450">${timeNow()}</span>`;
+  return chip;
+}
+
+async function send() {
+  if (!currentId) return;
+  const input = $('message');
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = '';
+  bubble('you', message);
+
+  const data = await (await fetch(`/candidates/${currentId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })).json();
+
+  if (data.recalled && data.recalled.length) recalledNote(data.recalled.length);
+  bubble('agent', data.reply);
+
+  // Newly learned facts appear as chips directly under the message that triggered them.
+  if (data.new_facts && data.new_facts.length) {
+    const row = document.createElement('div');
+    row.className = 'flex flex-wrap gap-2 px-1';
+    chat.appendChild(row);
+    // stagger slightly so multiple chips cascade in
+    data.new_facts.forEach((f, i) => {
+      setTimeout(() => { row.appendChild(memoryChip(f.fact)); chat.scrollTop = chat.scrollHeight; }, i * 90);
+    });
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// ---- stored-memories drawer ----
+async function toggleMemories() {
+  const panel = $('memoryPanel');
+  const hidden = panel.classList.contains('hidden');
+  if (hidden) {
+    if (!currentId) return;
+    await loadMemories();
+    panel.classList.remove('hidden');
+    $('memBtnLabel').textContent = 'Hide memories';
+  } else {
+    panel.classList.add('hidden');
+    $('memBtnLabel').textContent = 'Stored memories';
+  }
+}
+
+async function loadMemories() {
+  const mems = await (await fetch(`/candidates/${currentId}/memories`)).json();
+  const box = $('memList');
+  box.innerHTML = '';
+  if (!mems.length) {
+    box.innerHTML = `<div class="text-14 text-text-secondary fw-450 py-6">No memories stored yet.</div>`;
+    return;
+  }
+  for (const m of mems) {
+    const row = document.createElement('div');
+    row.className = 'py-3 border-b border-border flex items-start gap-3';
+    row.innerHTML =
+      `<i class="hgi-stroke hgi-bookmark-01 text-16 text-accent mt-0.5 shrink-0"></i>` +
+      `<div class="min-w-0 flex-1">` +
+        `<div class="text-14 fw-450">${esc(m.fact_text)}</div>` +
+        `<div class="text-13 text-text-secondary font-mono mt-0.5">${esc(m.category)} · importance ${m.importance}</div>` +
+      `</div>`;
+    box.appendChild(row);
+  }
+}
+
+// escape user/model text before putting it in innerHTML
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+loadCandidates();
+</script>
+</body>
+</html>
