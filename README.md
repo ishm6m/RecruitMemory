@@ -2,6 +2,12 @@
 
 An AI hiring assistant that **remembers candidates across interview sessions.**
 
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+![Python 3.10](https://img.shields.io/badge/Python-3.10-blue.svg)
+![Qwen Cloud](https://img.shields.io/badge/AI-Qwen%20Cloud-6E4AFF.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688.svg)
+![Docker ready](https://img.shields.io/badge/Docker-ready-2496ED.svg)
+
 Built for the **Global AI Hackathon Series with Qwen Cloud — Track 1: MemoryAgent.**
 
 Interviewers at a jute mill (Jabbar Jute Mills) talk to candidates over multiple
@@ -9,6 +15,11 @@ sessions. RecruitMemory quietly extracts durable facts from each conversation,
 recalls only the relevant ones later, and lets old details fade — so the
 assistant behaves like a colleague who actually remembers people, not a chatbot
 with amnesia.
+
+<!-- Optional: add docs/screenshot.png and uncomment for a UI preview.
+![RecruitMemory UI](docs/screenshot.png) -->
+
+> 🎥 **Presenting?** See [DEMO.md](DEMO.md) for a 3-minute talk-track that shows all three memory mechanisms on screen.
 
 ---
 
