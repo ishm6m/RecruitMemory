@@ -25,6 +25,15 @@ natural.
 
 *(Show the clean UI. Salma already sits in the sidebar; Karim doesn't exist yet.)*
 
+**Prove it's real memory, not just a live chat — reload the page.** Click Salma,
+show her stored facts, then **hard-refresh the browser (Cmd+Shift+R)**. She and
+every fact are still there.
+
+> "I talked to Salma in an earlier session — I've since closed the app. Watch: I
+> reload the whole page, and she's still here, with everything I learned about
+> her. This isn't chat history in a browser tab — it's a memory store on disk
+> that outlives the session. That's the whole point."
+
 ---
 
 ## 0:20 — 0:55 · Teach it facts, then correct it → **Extraction + belief update**
@@ -96,7 +105,10 @@ teal "updated" chip.)*
 ## 2:45 — 3:05 · Close (durability + stack)
 
 > "Everything runs on **Qwen Cloud** — qwen-plus for reasoning, text-embedding-v3
-> for the memory search. It ships as **one Docker container**, and the whole
+> for the memory search. And notice what retrieval buys us: instead of pasting a
+> candidate's entire history into every prompt, we inject only the **top 5
+> relevant memories** — so the cost per question stays flat no matter how long
+> their history grows. It ships as **one Docker container**, and the whole
 > memory store **backs up to Alibaba Cloud OSS** with one command.
 > **RecruitMemory — an agent that remembers, recalls, forgets, changes its mind,
 > and reasons across people, just like we do.**"
