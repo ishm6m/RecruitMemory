@@ -81,7 +81,8 @@ injected stays flat.)*
 > *'consistent safety ownership and procedural mastery.'* Nobody told it that —
 > it **inferred a trait** from the evidence. And because that insight is stored as
 > a high-importance memory, it now **steers future recommendations**. The agent's
-> understanding is *deepening*, not just growing."
+> understanding is *deepening*, not just growing. This also fires **on its own** as
+> a conversation grows — I'm pressing the button here only to show it on cue."
 
 *(Point at the amber **insight** rows that appear at the top of the store.)*
 

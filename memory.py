@@ -217,6 +217,28 @@ def decay_and_consolidate(candidate_id):
 # =====================================================================
 REFLECT_MIN_FACTS = 3      # need at least this many raw facts to generalise from
 INSIGHT_MIN_IMPORTANCE = 7 # insights outrank raw facts so they steer recommendations
+REFLECT_EVERY = 4          # auto-reflect once this many *unreflected* raw facts pile up
+
+
+def _should_reflect(raw_count, insight_count):
+    """Gate for auto-reflection: fire only when a fresh batch of raw facts has
+    accumulated beyond what the existing insights already cover. Pure -> testable."""
+    return raw_count >= REFLECT_MIN_FACTS and raw_count >= (insight_count + 1) * REFLECT_EVERY
+
+
+def maybe_reflect(candidate_id):
+    """
+    Reflection that happens *on its own* as a conversation grows — so the agent's
+    understanding deepens over time, not only when someone presses the button. Fired
+    from the chat loop; reflect() dedups, so an eager trigger can't spam near-identical
+    insights.
+    """
+    active = db.get_active_memories(candidate_id)
+    raw = sum(1 for m in active if m["category"] != "insight")
+    insights = sum(1 for m in active if m["category"] == "insight")
+    if _should_reflect(raw, insights):
+        return reflect(candidate_id)
+    return {"insights": []}
 
 
 def reflect(candidate_id):
@@ -398,4 +420,7 @@ if __name__ == "__main__":
     assert _m is _rows[0] and abs(_s - 1.0) < 1e-9
     assert _parse_json_array('```json\n[{"fact":"x"}]\n```') == [{"fact": "x"}]
     assert _parse_json_array("no json here") == []
+    # auto-reflect gate: fires on a full batch of unreflected facts, not before
+    assert _should_reflect(4, 0) and not _should_reflect(3, 0)
+    assert not _should_reflect(4, 1) and _should_reflect(8, 1)
     print("memory.py self-checks passed")

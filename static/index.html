@@ -668,6 +668,13 @@ async function send() {
     if (data.housekeeping && data.housekeeping.consolidated > 0) {
       consolidationNote(data.housekeeping.consolidated);
     }
+
+    // Mechanism 4, automatic: the agent formed a higher-order insight on its own
+    // this turn (no button). Understanding deepening over the conversation.
+    if (data.reflected && data.reflected.length) {
+      insightNote(data.reflected);
+      if ($('memoryPanel').classList.contains('open')) loadMemories();
+    }
   } catch (e) {
     think.remove();
     errorRow('Something went wrong reaching the assistant. Please try again.');
@@ -756,6 +763,19 @@ async function reflect() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// Inline chat note: the agent formed a higher-order opinion on its own this turn
+// (auto-reflection). Same amber as the insight category so the link is obvious.
+function insightNote(insights) {
+  const d = document.createElement('div');
+  d.className = 'chip-in flex items-start gap-2 rounded-lg px-3 py-2 text-13 fw-450';
+  d.setAttribute('style', 'background:rgba(184,134,11,.10);color:#8a6608');
+  d.innerHTML = `<i class="hgi-stroke hgi-idea-01 text-14 mt-0.5 shrink-0"></i>` +
+    `<span><span class="fw-550">Formed a new insight:</span> ` +
+    insights.map(i => esc(i.insight)).join(' · ') + `</span>`;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 // Banner naming the insight(s) just synthesized (mechanism 4, made visible).

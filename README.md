@@ -39,7 +39,7 @@ its own function in [`memory.py`](memory.py):
 | 1 | **Extraction + belief update** | Reads each interviewer message and pulls out structured candidate facts (`{fact, category, importance}`), embeds each one, and stores it. Skips near-duplicates — and when a new fact *corrects* an old one (e.g. safety score 6→9), it **retires the stale belief** instead of hoarding both, so retrieval never surfaces a contradiction. | `extract_and_store()` |
 | 2 | **Retrieval** | Embeds the current question and ranks every stored memory by a weighted sum of `relevance + importance + recency` (Generative Agents, Park et al. 2023), injecting only the **top 5** into the prompt — so cost stays flat as history grows. Retrieving a memory "touches" it, keeping useful facts alive. | `retrieve()` |
 | 3 | **Decay + Consolidation** | Importance halves every 14 days without access; faded memories are archived (a low-value fact is forgotten in ~a week, a critical one survives a month+). When a candidate accumulates too many memories, the oldest/least-important batch is summarized into one to keep token usage bounded. | `decay_and_consolidate()` |
-| 4 | **Reflection** | Periodically reads the raw facts and synthesizes 1–2 **higher-order insights** — durable traits no single fact states ("consistent safety ownership") — stored as high-importance memories that then influence future retrieval and recommendations. This is how the agent's *understanding deepens over time* rather than just accumulating. | `reflect()` |
+| 4 | **Reflection** | **Fires automatically as facts accumulate** (and on demand): reads the raw facts and synthesizes 1–2 **higher-order insights** — durable traits no single fact states ("consistent safety ownership") — stored as high-importance memories that then influence future retrieval and recommendations. This is how the agent's *understanding deepens over time* rather than just accumulating. | `maybe_reflect()` / `reflect()` |
 
 This mirrors how human memory works: you remember what's important and recent,
 you forget trivia, you compress old details into gist — and you form judgements
@@ -60,9 +60,11 @@ five probes against the real pipeline (real Qwen embeddings, a throwaway DB):
 | **D. Forgetting** | A low-value memory should fade out while a high-value one survives the same elapsed time. | **3/3** |
 | **E. Reflection** | Synthesized insights should be stored *and* surface for trait-level questions. | **passes** — insight retrieved over raw facts |
 
-The ablation (B) is the headline: importance × recency weighting recovers the
-current truth **2.5× more often** than similarity alone — proof the ranking earns
-its keep. Reproduce with `python eval.py` (needs a working `QWEN_API_KEY`).
+The ablation (B) is the headline: adding the importance + recency terms recovers
+the current truth **2.5× more often** than similarity alone — proof the ranking
+earns its keep. (recall@1 is lower by design — the system injects the **top 5**,
+not the top 1, so recall@5 is the metric that maps to what the prompt actually
+sees.) Reproduce with `python eval.py` (needs a working `QWEN_API_KEY`).
 
 ```
 A. RETRIEVAL   recall@1=50%  recall@3=75%  recall@5=100%  MRR=0.65  (n=8)
@@ -83,7 +85,7 @@ flowchart TD
     API -->|"1. retrieve()"| MEM["Memory engine<br/>(memory.py)"]
     API -->|"3. extract_and_store()"| MEM
     API -->|"4. decay_and_consolidate()"| MEM
-    API -->|"reflect() (on demand)"| MEM
+    API -->|"5. maybe_reflect() (auto) / reflect()"| MEM
 
     MEM <-->|"embeddings + facts"| DB[("SQLite<br/>recruitmemory.db")]
     MEM -->|"chat + embed"| QWEN["Qwen Cloud<br/>(qwen-plus, text-embedding-v3)"]
@@ -97,8 +99,16 @@ flowchart TD
 
 **One chat request runs the core loop in order:** retrieve relevant memories →
 ask Qwen for a reply using them → extract new facts (with belief-update) → run
-decay & consolidation housekeeping. **Reflection** runs on demand (the "Synthesize
-insights" button / `POST /reflect`) to distil the accumulated facts into insights.
+decay & consolidation housekeeping → **reflect automatically** once enough new
+facts have accrued. The same reflection is also available on demand (the
+"Synthesize insights" button / `POST /reflect`).
+
+**On scaling:** retrieval ranks a *single candidate's* memories — naturally tens,
+not millions (decay + consolidation keep the count bounded on purpose), so the
+linear scan is not the bottleneck a global vector store would be. If a candidate's
+history ever grew large, the ranking is a drop-in for an ANN index (e.g.
+`sqlite-vec`); the [`eval.py`](eval.py) harness is already in place to prove such a
+swap doesn't regress recall.
 
 ### Stack
 - **Backend:** FastAPI + uvicorn (Python 3.10)

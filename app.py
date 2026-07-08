@@ -102,11 +102,17 @@ def chat(candidate_id: int, body: ChatIn):
     # 4. DECAY + CONSOLIDATION: housekeeping so memory stays bounded.
     housekeeping = memory.decay_and_consolidate(candidate_id)
 
+    # 5. REFLECTION (automatic): once enough raw facts accrue, the agent deepens its
+    #    understanding on its own — forming higher-order insights mid-conversation,
+    #    no button press required.
+    reflected = memory.maybe_reflect(candidate_id).get("insights", [])
+
     return {
         "reply": reply,
         "recalled": [m["fact_text"] for m in recalled],
         "total_active": total_active,   # pool size retrieval ranked (for the "5 of N" proof)
         "new_facts": new_facts,
+        "reflected": reflected,         # insights auto-synthesised this turn (if any)
         "housekeeping": housekeeping,
     }
 
