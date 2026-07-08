@@ -1,12 +1,12 @@
 """
-eval.py — a small, honest benchmark for the memory engine.
+eval.py, a small, honest benchmark for the memory engine.
 
 It answers the question a MemoryAgent judge actually asks: *does the memory
 work, and does the fancy ranking earn its keep?* Five probes, real embeddings,
 a throwaway database (your real recruitmemory.db is never touched):
 
-  A. RETRIEVAL     recall@k + MRR — does a question surface the right memory?
-  B. ABLATION      full relevance+importance+recency ranking vs plain cosine — on
+  A. RETRIEVAL     recall@k + MRR. Does a question surface the right memory?
+  B. ABLATION      full relevance+importance+recency ranking vs plain cosine, on
                    stale-but-similar distractors, how often does each recover the CURRENT truth?
   C. BELIEF UPDATE a correction should retire the old belief, not hoard both.
   D. FORGETTING    a low-value memory should fade out while a high-value one survives.

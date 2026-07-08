@@ -1,10 +1,10 @@
 """
-db.py — SQLite schema + a tiny data-access layer.
+db.py, SQLite schema plus a tiny data-access layer.
 
 Plain language: this file owns the database file (recruitmemory.db). It creates
 two tables the first time it runs, and provides small helper functions so the
 rest of the app never has to write raw SQL. SQLite is just a single file on
-disk — no server to install.
+disk, no server to install.
 """
 
 import sqlite3
@@ -126,7 +126,7 @@ def touch_memories(memory_ids):
 
 
 def age_memories(candidate_id, seconds):
-    """Backdate every active memory's last-access time by `seconds` — i.e. make
+    """Backdate every active memory's last-access time by `seconds`, i.e. make
     the decay curve behave as if that much time has passed. Demo-only helper."""
     _c.execute(
         "UPDATE memories SET last_accessed_at = last_accessed_at - ? "

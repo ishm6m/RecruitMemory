@@ -1,5 +1,5 @@
 """
-backup.py — copy the SQLite database up to Alibaba Cloud OSS (object storage).
+backup.py, copy the SQLite database up to Alibaba Cloud OSS (object storage).
 
 Plain language: OSS is Alibaba's version of a hard drive in the cloud. This
 script grabs your database file and uploads a timestamped copy of it into a
@@ -53,7 +53,7 @@ def _bucket():
 
 def backup():
     if not os.path.exists(DB_PATH):
-        sys.exit(f"No database found at {DB_PATH} — nothing to back up yet.")
+        sys.exit(f"No database found at {DB_PATH}. Nothing to back up yet.")
     bucket = _bucket()
     stamp = time.strftime("%Y%m%d-%H%M%S")
     key = f"{PREFIX}recruitmemory-{stamp}.db"

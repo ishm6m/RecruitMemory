@@ -1,5 +1,5 @@
 """
-qwen.py — talks to Qwen Cloud using the official OpenAI SDK.
+qwen.py, talks to Qwen Cloud using the official OpenAI SDK.
 
 Qwen Cloud exposes an "OpenAI-compatible" API, which means we can use the
 familiar `openai` Python library and just point it at Qwen's base URL. This

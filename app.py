@@ -1,5 +1,5 @@
 """
-app.py — the FastAPI web server. Wires the memory engine to HTTP endpoints and
+app.py, the FastAPI web server. Wires the memory engine to HTTP endpoints and
 serves the single-page frontend.
 
 Endpoints:
@@ -73,7 +73,7 @@ def chat(candidate_id: int, body: ChatIn):
     if not candidate:
         raise HTTPException(404, "candidate not found")
 
-    # Size of the memory pool retrieval will search — so the UI can show
+    # Size of the memory pool retrieval will search, so the UI can show
     # "recalled 5 of N", making the "cost stays flat as history grows" claim visible.
     total_active = len(db.get_active_memories(candidate_id))
 
@@ -103,7 +103,7 @@ def chat(candidate_id: int, body: ChatIn):
     housekeeping = memory.decay_and_consolidate(candidate_id)
 
     # 5. REFLECTION (automatic): once enough raw facts accrue, the agent deepens its
-    #    understanding on its own — forming higher-order insights mid-conversation,
+    #    understanding on its own, forming higher-order insights mid-conversation,
     #    no button press required.
     reflected = memory.maybe_reflect(candidate_id).get("insights", [])
 

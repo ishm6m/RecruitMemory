@@ -1,4 +1,4 @@
-# Dockerfile — the recipe for building a self-contained image of the app.
+# Dockerfile, the recipe for building a self-contained image of the app.
 # Anyone with Docker can build this and run RecruitMemory without installing
 # Python, pip, or any of our dependencies by hand.
 

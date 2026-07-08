@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RecruitMemory — Jabbar Jute Mills</title>
+  <title>RecruitMemory · Jabbar Jute Mills</title>
   <!-- Inline SVG favicon (accent bookmark) so the browser stops 404-ing on /favicon.ico. -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F6B5C'/%3E%3Cpath d='M11 8h10a1 1 0 0 1 1 1v15l-6-4-6 4V9a1 1 0 0 1 1-1z' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
 
@@ -91,10 +91,10 @@
     .pulse-dot { width: 7px; height: 7px; border-radius: 9999px; background: #0F6B5C;
                  display: inline-block; animation: breathe 1200ms ease-in-out infinite; }
 
-    /* Category dot — small, low-saturation, used on chips + in the drawer. */
+    /* Category dot, small, low-saturation, used on chips + in the drawer. */
     .cat-dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; flex: none; }
 
-    /* Importance meter — a quiet 0..10 bar. */
+    /* Importance meter, a quiet 0..10 bar. */
     .imp-track { display: inline-block; width: 34px; height: 3px; border-radius: 9999px;
                  background: #E9E8E5; overflow: hidden; vertical-align: middle; }
     .imp-fill  { display: block; height: 100%; background: currentColor; border-radius: 9999px;
@@ -104,7 +104,7 @@
        without touching the JS that appends into them. */
     #chat > *, #memList > * { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
 
-    /* Memory drawer — mounted always so it can transition (no display:none). */
+    /* Memory drawer, mounted always so it can transition (no display:none). */
     #memoryPanel { opacity: 0; transform: translateY(10px); pointer-events: none;
                    transition: opacity .22s ease, transform .22s cubic-bezier(.2,.7,.2,1); }
     #memoryPanel.open { opacity: 1; transform: none; pointer-events: auto; }
@@ -167,7 +167,7 @@
                        hover:bg-accent-hover active:scale-[.985] transition-all duration-150">
           <i class="hgi-stroke hgi-add-01 text-16"></i> Add candidate
         </button>
-        <!-- One-click demo candidate (Salma) — the Compare partner in DEMO.md. -->
+        <!-- One-click demo candidate (Salma), the Compare partner in DEMO.md. -->
         <button onclick="seedDemo()"
                 class="inline-flex items-center justify-center gap-1.5 text-12 fw-450 text-text-secondary
                        hover:text-accent transition-colors">
@@ -220,7 +220,7 @@
           </span>
           <div class="text-15 fw-550 text-text-primary">A hiring memory that stays</div>
           <div class="text-13 text-text-secondary fw-450 mt-1 leading-relaxed">
-            RecruitMemory remembers each candidate across sessions — it recalls,
+            RecruitMemory remembers each candidate across sessions. It recalls,
             forgets what goes stale, and changes its mind when you correct it.
             Pick someone from the list, or add a candidate to begin.
           </div>
@@ -244,7 +244,7 @@
             </button>
           </div>
           <div class="text-11 text-text-tertiary fw-450 text-center mt-2 hidden sm:block">
-            Enter to send · Shift+Enter for a new line · Decision-support only — a human makes the hiring call
+            Enter to send · Shift+Enter for a new line · Decision-support only, a human makes the hiring call
           </div>
         </div>
       </div>
@@ -325,7 +325,7 @@
 
 <script>
 // Plain JavaScript, no framework. Talks to the FastAPI endpoints on the same host.
-// The backend/API is unchanged — this file only restyles, re-lays-out, and surfaces
+// The backend/API is unchanged. This file only restyles, re-lays-out, and surfaces
 // data (category, importance, consolidation) the API already returns.
 let currentId = null;
 let sending = false;
@@ -337,7 +337,7 @@ const cmpSelected = new Set();  // candidate ids currently ticked for comparison
 const $ = (id) => document.getElementById(id);
 const chat = $('chat');
 
-// One place that knows how each memory category looks. Earthy, low-saturation — not a rainbow.
+// One place that knows how each memory category looks. Earthy, low-saturation, not a rainbow.
 const CATS = {
   insight:    { label: 'insight',    color: '#B8860B' },
   skill:      { label: 'skill',      color: '#0F6B5C' },
@@ -394,7 +394,7 @@ async function loadCandidates() {
   }
   for (const c of list) {
     const active = c.id === currentId;
-    // Row wraps the (full-width) select button plus a hover-reveal delete button —
+    // Row wraps the (full-width) select button plus a hover-reveal delete button,
     // two siblings, never a button inside a button.
     const row = document.createElement('div');
     row.className = 'group relative';
@@ -520,7 +520,7 @@ function bubble(who, text) {
 
 // Phase-stepped thinking indicator. The backend runs retrieve→reason→extract
 // server-side and returns them in ONE response, so this steps through the phase
-// labels on a client timer — a faithful view of the real sequence, not a fake.
+// labels on a client timer, a faithful view of the real sequence, not a fake.
 // ponytail: client-timed phase cascade; swap to SSE/streaming for true per-step timing.
 function thinkingRow() {
   const phases = ['Recalling memories', 'Thinking', 'Learning'];
@@ -546,7 +546,7 @@ function thinkingRow() {
 }
 
 // Which memories were recalled this turn (mechanism 2). Collapsed to a count so
-// the chat stays clean; one click reveals the exact facts retrieval pulled —
+// the chat stays clean; one click reveals the exact facts retrieval pulled,
 // proof it searched and ranked specific memories, not dumped the whole history.
 // "5 of N" makes the efficiency claim visible: it injects only the top few no
 // matter how large N grows, so cost per question stays flat.
@@ -559,7 +559,7 @@ function recalledNote(facts, total) {
   // Only show the "ranked N, injected top n" caption once there's a pool worth ranking.
   const caption = pool > n
     ? `<li class="text-11 text-text-tertiary fw-450 italic -ml-3 mb-0.5 list-none">` +
-      `Ranked ${pool} by relevance, importance & recency — injected the top ${n}.</li>`
+      `Ranked ${pool} by relevance, importance & recency, injected the top ${n}.</li>`
     : '';
   const d = document.createElement('details');
   d.className = 'group px-0.5';
@@ -580,7 +580,7 @@ function recalledNote(facts, total) {
   chat.scrollTop = chat.scrollHeight;
 }
 
-// quiet note that decay/consolidation ran (mechanism 3 — previously invisible)
+// quiet note that decay/consolidation ran (mechanism 3, previously invisible)
 function consolidationNote(n) {
   const d = document.createElement('div');
   d.className = 'text-12 text-text-secondary fw-450 px-0.5 flex items-center gap-2';
@@ -590,7 +590,7 @@ function consolidationNote(n) {
   chat.appendChild(d);
 }
 
-// inline, quiet error row — never fail silently
+// inline, quiet error row, never fail silently
 function errorRow(msg) {
   const d = document.createElement('div');
   d.className = 'text-13 text-danger fw-450 px-0.5 flex items-center gap-2';
@@ -616,13 +616,13 @@ function memoryChip(f) {
 }
 
 // The agent changed its mind: an old fact was retired in favor of a new one.
-// This is the "wow" — memory that reconciles, not just accumulates.
+// This is the "wow": memory that reconciles, not just accumulates.
 function updateNote(oldFact, newFact) {
   const d = document.createElement('div');
   d.className = 'text-12 text-text-secondary fw-450 px-0.5 flex items-start gap-2';
   d.innerHTML =
     `<span class="cat-dot mt-1.5" style="background:#0F6B5C"></span>` +
-    `<span>Updated belief — <span class="line-through opacity-60">${esc(oldFact)}</span> &rarr; ${esc(newFact)}</span>`;
+    `<span>Updated belief: <span class="line-through opacity-60">${esc(oldFact)}</span> &rarr; ${esc(newFact)}</span>`;
   chat.appendChild(d);
 }
 
@@ -715,7 +715,7 @@ async function simulateTime() {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
-    const bits = [`${days} days passed — importance decayed`];
+    const bits = [`${days} days passed, importance decayed`];
     if (d.archived) bits.push(`${d.archived} ${d.archived === 1 ? 'memory' : 'memories'} faded away`);
     if (d.consolidated) bits.push(`${d.consolidated} consolidated into a summary`);
     lastSim = bits.join(' · ');
@@ -739,7 +739,7 @@ function simBanner() {
 
 // Reflection (mechanism 4): synthesize higher-order insights from the raw facts.
 // The new insights are stored like any memory, so they appear in the amber
-// "insight" section AND start influencing retrieval — the agent forms opinions
+// "insight" section AND start influencing retrieval, so the agent forms opinions
 // it was never explicitly told.
 async function reflect() {
   if (!currentId) return;
