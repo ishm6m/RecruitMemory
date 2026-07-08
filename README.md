@@ -45,6 +45,13 @@ This mirrors how human memory works: you remember what's important and recent,
 you forget trivia, you compress old details into gist — and you form judgements
 that no single observation ever stated.
 
+![The agent forms a higher-order insight on its own, mid-conversation](docs/auto-reflection.png)
+
+*Reflection firing **automatically**: after a few facts about Karim accrue, the
+agent synthesises traits no single message stated — "proactive safety
+consciousness", "deep operational expertise" — with no button pressed. That's
+understanding deepening in real time, not just facts piling up.*
+
 ---
 
 ## Does the memory actually work?
