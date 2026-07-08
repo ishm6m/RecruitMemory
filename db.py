@@ -77,6 +77,13 @@ def get_candidate(candidate_id):
     return dict(row) if row else None
 
 
+def delete_candidate(candidate_id):
+    """Remove a candidate and all of their memories."""
+    _c.execute("DELETE FROM memories WHERE candidate_id = ?", (candidate_id,))
+    _c.execute("DELETE FROM candidates WHERE id = ?", (candidate_id,))
+    _c.commit()
+
+
 # ---------- memories ----------
 
 def add_memory(candidate_id, fact_text, category, importance, embedding):

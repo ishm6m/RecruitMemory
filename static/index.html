@@ -114,6 +114,9 @@
     #navBackdrop.show { opacity: 1; pointer-events: auto; }
     @media (max-width: 767px) { #sidebar.open { transform: none !important; } }
 
+    /* Recalled-memories disclosure: hide the native marker, we draw our own chevron. */
+    summary::-webkit-details-marker { display: none; }
+
     /* One consistent, visible focus ring everywhere. */
     a:focus-visible, button:focus-visible, input:focus-visible,
     textarea:focus-visible, [tabindex]:focus-visible {
@@ -241,7 +244,7 @@
             </button>
           </div>
           <div class="text-11 text-text-tertiary fw-450 text-center mt-2 hidden sm:block">
-            Enter to send · Shift+Enter for a new line
+            Enter to send · Shift+Enter for a new line · Decision-support only — a human makes the hiring call
           </div>
         </div>
       </div>
@@ -262,6 +265,12 @@
                 <option value="30">+1 month</option>
                 <option value="90">+3 months</option>
               </select>
+              <button id="reflectBtn" onclick="reflect()"
+                      title="Synthesize higher-order insights from the raw facts"
+                      class="inline-flex items-center gap-1.5 bg-accent-soft text-accent fw-550 rounded-lg px-2.5 py-1.5 text-12
+                             hover:bg-accent/15 active:scale-[.97] transition-all duration-150 disabled:opacity-50">
+                <i class="hgi-stroke hgi-idea-01 text-14"></i> Synthesize insights
+              </button>
               <button id="simBtn" onclick="simulateTime()"
                       class="inline-flex items-center gap-1.5 bg-accent-soft text-accent fw-550 rounded-lg px-2.5 py-1.5 text-12
                              hover:bg-accent/15 active:scale-[.97] transition-all duration-150 disabled:opacity-50">
@@ -321,6 +330,7 @@
 let currentId = null;
 let sending = false;
 let lastSim = null;   // one-line summary of the most recent "advance time" run
+let lastReflect = null;   // one-line summary of the most recent "synthesize insights" run
 let allCandidates = [];        // cached list, reused by the compare picker
 const cmpSelected = new Set();  // candidate ids currently ticked for comparison
 
@@ -329,6 +339,7 @@ const chat = $('chat');
 
 // One place that knows how each memory category looks. Earthy, low-saturation — not a rainbow.
 const CATS = {
+  insight:    { label: 'insight',    color: '#B8860B' },
   skill:      { label: 'skill',      color: '#0F6B5C' },
   score:      { label: 'score',      color: '#4A6FA5' },
   experience: { label: 'experience', color: '#9A6B3F' },
@@ -336,7 +347,7 @@ const CATS = {
   summary:    { label: 'summary',    color: '#7A5A8C' },
   note:       { label: 'note',       color: '#A6A39C' },
 };
-const CAT_ORDER = ['skill', 'score', 'experience', 'red_flag', 'summary', 'note'];
+const CAT_ORDER = ['insight', 'skill', 'score', 'experience', 'red_flag', 'summary', 'note'];
 const cat = (c) => CATS[c] || CATS.note;
 
 function timeNow() {
@@ -382,11 +393,16 @@ async function loadCandidates() {
     return;
   }
   for (const c of list) {
+    const active = c.id === currentId;
+    // Row wraps the (full-width) select button plus a hover-reveal delete button —
+    // two siblings, never a button inside a button.
+    const row = document.createElement('div');
+    row.className = 'group relative';
+
     const b = document.createElement('button');
     b.onclick = () => selectCandidate(c);
-    const active = c.id === currentId;
     b.className =
-      'w-full text-left rounded-lg px-2.5 py-2 flex items-center gap-2.5 transition-colors duration-150 ' +
+      'w-full text-left rounded-lg pl-2.5 pr-9 py-2 flex items-center gap-2.5 transition-colors duration-150 ' +
       (active ? 'bg-accent-soft text-accent fw-550' : 'text-text-primary hover:bg-surface fw-450');
     b.innerHTML =
       `<span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${active ? 'bg-accent text-white' : 'bg-surface border border-border text-text-secondary'}">` +
@@ -394,13 +410,48 @@ async function loadCandidates() {
       `<span class="min-w-0"><span class="block text-14 leading-tight truncate">${esc(c.name)}</span>` +
       (c.role ? `<span class="block text-12 leading-tight mt-0.5 ${active ? 'text-accent/80' : 'text-text-secondary'} truncate">${esc(c.role)}</span>` : '') +
       `</span>`;
-    box.appendChild(b);
+
+    const del = document.createElement('button');
+    del.setAttribute('aria-label', 'Delete ' + c.name);
+    del.onclick = (e) => { e.stopPropagation(); deleteCandidate(c); };
+    del.className =
+      'absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md flex items-center justify-center ' +
+      'text-text-tertiary hover:text-danger hover:bg-surface opacity-0 group-hover:opacity-100 ' +
+      'focus:opacity-100 transition-opacity duration-150';
+    del.innerHTML = `<i class="hgi-stroke hgi-delete-02 text-14"></i>`;
+
+    row.appendChild(b);
+    row.appendChild(del);
+    box.appendChild(row);
+  }
+}
+
+// Remove a candidate + all their memories. Keeps the sidebar clean and lets
+// presenters reset between rehearsals without touching the database file.
+async function deleteCandidate(c) {
+  if (!confirm(`Delete ${c.name} and all their memories? This can’t be undone.`)) return;
+  try {
+    const res = await fetch(`/candidates/${c.id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    cmpSelected.delete(c.id);
+    if (currentId === c.id) {
+      currentId = null;
+      chat.innerHTML = '';
+      $('hdrName').textContent = 'Select a candidate';
+      $('hdrRole').textContent = '';
+      $('empty').classList.remove('hidden');
+      if ($('memoryPanel').classList.contains('open')) toggleMemories();
+    }
+    await loadCandidates();
+  } catch (e) {
+    errorRow("Couldn't delete that candidate. Is the server running?");
   }
 }
 
 function selectCandidate(c) {
   currentId = c.id;
   lastSim = null;   // reset the time-machine banner for the new candidate
+  lastReflect = null;   // reset the reflection banner for the new candidate
   $('hdrName').textContent = c.name;
   $('hdrRole').textContent = c.role || '';
   $('empty').classList.add('hidden');
@@ -494,12 +545,39 @@ function thinkingRow() {
   return { done: stop, remove: stop };
 }
 
-// quiet, uncolored note that memories were recalled for this turn (mechanism 2)
-function recalledNote(count) {
-  const d = document.createElement('div');
-  d.className = 'text-12 text-text-secondary fw-450 px-0.5 flex items-center gap-1.5';
-  d.innerHTML = `<i class="hgi-stroke hgi-all-bookmark text-14 text-text-tertiary"></i> Recalled ${count} ${count === 1 ? 'memory' : 'memories'}`;
+// Which memories were recalled this turn (mechanism 2). Collapsed to a count so
+// the chat stays clean; one click reveals the exact facts retrieval pulled —
+// proof it searched and ranked specific memories, not dumped the whole history.
+// "5 of N" makes the efficiency claim visible: it injects only the top few no
+// matter how large N grows, so cost per question stays flat.
+function recalledNote(facts, total) {
+  const n = facts.length;
+  const pool = Math.max(Number(total) || n, n);
+  const summary = pool > n
+    ? `Recalled ${n} of ${pool} memories`
+    : `Recalled ${n} ${n === 1 ? 'memory' : 'memories'}`;
+  // Only show the "ranked N, injected top n" caption once there's a pool worth ranking.
+  const caption = pool > n
+    ? `<li class="text-11 text-text-tertiary fw-450 italic -ml-3 mb-0.5 list-none">` +
+      `Ranked ${pool} by relevance, importance & recency — injected the top ${n}.</li>`
+    : '';
+  const d = document.createElement('details');
+  d.className = 'group px-0.5';
+  d.innerHTML =
+    `<summary class="list-none cursor-pointer inline-flex items-center gap-1.5 text-12 text-text-secondary fw-450 hover:text-text-primary transition-colors">` +
+      `<i class="hgi-stroke hgi-all-bookmark text-14 text-text-tertiary"></i>` +
+      summary +
+      `<i class="hgi-stroke hgi-arrow-down-01 text-12 text-text-tertiary transition-transform group-open:rotate-180"></i>` +
+    `</summary>` +
+    `<ul class="mt-2 ml-1.5 flex flex-col gap-1.5 border-l border-hairline pl-3">` +
+      caption +
+      facts.map(f =>
+        `<li class="text-12 text-text-secondary fw-450 flex gap-2">` +
+        `<span class="cat-dot mt-1.5 shrink-0" style="background:#0F6B5C"></span><span>${esc(f)}</span></li>`
+      ).join('') +
+    `</ul>`;
   chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 // quiet note that decay/consolidation ran (mechanism 3 — previously invisible)
@@ -570,7 +648,7 @@ async function send() {
     const data = await res.json();
     think.done();
 
-    if (data.recalled && data.recalled.length) recalledNote(data.recalled.length);
+    if (data.recalled && data.recalled.length) recalledNote(data.recalled, data.total_active);
     bubble('agent', data.reply);
 
     // Newly learned facts appear as chips directly under the message that triggered them.
@@ -650,6 +728,42 @@ function simBanner() {
   if (!lastSim) return '';
   return `<div class="chip-in flex items-center gap-2 bg-accent-soft text-accent rounded-lg px-3 py-2 text-13 fw-450 mb-5">` +
          `<i class="hgi-stroke hgi-time-quarter-pass text-14"></i> ${esc(lastSim)}</div>`;
+}
+
+// Reflection (mechanism 4): synthesize higher-order insights from the raw facts.
+// The new insights are stored like any memory, so they appear in the amber
+// "insight" section AND start influencing retrieval — the agent forms opinions
+// it was never explicitly told.
+async function reflect() {
+  if (!currentId) return;
+  const btn = $('reflectBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/candidates/${currentId}/reflect`, { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    const ins = d.insights || [];
+    lastReflect = ins.length
+      ? `Synthesized ${ins.length} insight${ins.length === 1 ? '' : 's'} from ${d.from_facts} facts: `
+        + ins.map(i => i.insight).join(' · ')
+      : (d.reason || 'No new insight to add yet');
+    await loadMemories();
+  } catch (e) {
+    lastReflect = null;
+    $('memList').insertAdjacentHTML('afterbegin',
+      `<div class="text-13 text-danger fw-450 mb-4 flex items-center gap-2">` +
+      `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn't synthesize insights. Is the server running?</div>`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Banner naming the insight(s) just synthesized (mechanism 4, made visible).
+function reflectBanner() {
+  if (!lastReflect) return '';
+  return `<div class="chip-in flex items-start gap-2 rounded-lg px-3 py-2 text-13 fw-450 mb-5" ` +
+         `style="background:rgba(184,134,11,.10);color:#8a6608">` +
+         `<i class="hgi-stroke hgi-idea-01 text-14 mt-0.5 shrink-0"></i> <span>${esc(lastReflect)}</span></div>`;
 }
 
 // ---- compare candidates (cross-candidate reasoning) ----
@@ -738,7 +852,7 @@ function renderCompare(d) {
 async function loadMemories() {
   const mems = await (await fetch(`/candidates/${currentId}/memories`)).json();
   const box = $('memList');
-  box.innerHTML = simBanner();
+  box.innerHTML = simBanner() + reflectBanner();
   if (!mems.length) {
     box.insertAdjacentHTML('beforeend',
       `<div class="text-center text-text-secondary py-16">` +

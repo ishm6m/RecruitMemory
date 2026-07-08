@@ -1,6 +1,7 @@
 # RecruitMemory — 3-Minute Demo Script
 
-A tight talk-track for judges. Goal: make all **three memory mechanisms**
+A tight talk-track for judges. Goal: make all **four memory mechanisms**
+(extraction + belief-update, retrieval, reflection, decay + consolidation)
 *happen on screen*, not just get described. Practice once so the timing feels
 natural.
 
@@ -63,11 +64,30 @@ teal "updated" chip.)*
 > score — and used them. It ranks every memory by **meaning, importance, and
 > recency**, injecting only the top few. That's mechanism two — **retrieval**."
 
-*(Point at the "recalled N memories" note above the reply.)*
+*(Point at the **"Recalled 5 of N memories"** note above the reply — expand it: it
+ranked *all* N by relevance, importance & recency and injected only the top 5. That
+"of N" is the cost story made visible: as a candidate's history grows, the number
+injected stays flat.)*
 
 ---
 
-## 1:35 — 2:15 · The forgetting, made visible → **Decay + Consolidation**
+## 1:35 — 1:55 · It forms opinions it was never told → **Reflection**
+
+1. Open **"Stored memories."** Click **"Synthesize insights."**
+
+> "So far it's *storing* facts. But real understanding means noticing patterns no
+> single fact states. Watch — I click **Synthesize insights**, and it reads
+> everything it knows about Karim and writes a new, higher-order memory:
+> *'consistent safety ownership and procedural mastery.'* Nobody told it that —
+> it **inferred a trait** from the evidence. And because that insight is stored as
+> a high-importance memory, it now **steers future recommendations**. The agent's
+> understanding is *deepening*, not just growing."
+
+*(Point at the amber **insight** rows that appear at the top of the store.)*
+
+---
+
+## 1:55 — 2:25 · The forgetting, made visible → **Decay + Consolidation**
 
 *(This is the differentiator — most "memory" demos only claim it. We show it.)*
 
@@ -88,7 +108,7 @@ teal "updated" chip.)*
 
 ---
 
-## 2:15 — 2:45 · Two candidates at once → **Compare**
+## 2:25 — 2:50 · Two candidates at once → **Compare**
 
 1. Click **"Compare"** in the sidebar. Tick **Karim** and **Salma**.
 2. Ask: **"Who is the better fit for a senior loom role?"** → Compare.
@@ -102,7 +122,7 @@ teal "updated" chip.)*
 
 ---
 
-## 2:45 — 3:05 · Close (durability + stack)
+## 2:50 — 3:10 · Close (durability + stack)
 
 > "Everything runs on **Qwen Cloud** — qwen-plus for reasoning, text-embedding-v3
 > for the memory search. And notice what retrieval buys us: instead of pasting a
@@ -111,7 +131,7 @@ teal "updated" chip.)*
 > their history grows. It ships as **one Docker container**, and the whole
 > memory store **backs up to Alibaba Cloud OSS** with one command.
 > **RecruitMemory — an agent that remembers, recalls, forgets, changes its mind,
-> and reasons across people, just like we do.**"
+> forms its own opinions, and reasons across people, just like we do.**"
 
 *(Show the GitHub repo page with the architecture diagram as the final frame.)*
 
@@ -123,6 +143,10 @@ teal "updated" chip.)*
   generation.
 - **Wifi dies?** Walk through the README's architecture diagram and the functions
   in `memory.py` — the story holds without a live server.
-- **Running short?** The two must-keep beats are **Advance time** (visible
-  forgetting) and **Compare** — they're what judges haven't seen elsewhere. The
-  belief-update correction can be dropped to a single sentence if needed.
+- **Running short?** The three must-keep beats are **Synthesize insights**
+  (understanding that deepens), **Advance time** (visible forgetting), and
+  **Compare** — they're what judges haven't seen elsewhere. The belief-update
+  correction can be dropped to a single sentence if needed.
+- **Have the numbers ready.** If a judge asks "does the memory actually work?",
+  the answer is in the README table — recall@5 = 100%, and the ranking recovers
+  the current truth 5/5 vs 2/5 for plain vector search (`python eval.py`).

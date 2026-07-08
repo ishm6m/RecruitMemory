@@ -1,17 +1,21 @@
 """
 memory.py — the memory engine. This is the heart of the MemoryAgent track.
 
-Three mechanisms, each its own function:
+Four mechanisms, each its own function:
 
   1. EXTRACTION   -> extract_and_store()   : pull structured facts from a chat
                                               exchange and store each as a row
-                                              with an embedding vector.
-  2. RETRIEVAL    -> retrieve()            : cosine-similarity search over a
-                                              candidate's memories, weighted by
-                                              importance x recency, return top-k.
-  3. DECAY +      -> decay_and_consolidate(): shrink importance over time,
+                                              with an embedding vector; retire a
+                                              stale belief when a fact updates it.
+  2. RETRIEVAL    -> retrieve()            : rank a candidate's memories by a
+                                              weighted SUM of relevance,
+                                              importance and recency; return top-k.
+  3. DECAY +      -> decay_and_consolidate(): let importance fade over time,
      CONSOLIDATION                          archive faded memories, and merge
                                             old/low ones into one summary row.
+  4. REFLECTION   -> reflect()             : synthesise higher-order INSIGHTS
+                                              from the raw facts so understanding
+                                              deepens, not just accumulates.
 """
 
 import json
@@ -33,6 +37,14 @@ DUP_THRESHOLD = 0.78      # new fact this similar to an existing one -> skip it
                           # (measured: paraphrases ~0.81, distinct facts ~0.55)
 SUPERSEDE_LOW = 0.62      # same-topic band: related enough that a new fact might be
                           # UPDATING an old belief (e.g. "scored 6/10" -> "scored 9/10")
+
+# Retrieval ranking = WEIGHTED SUM of three normalised 0..1 signals (Generative
+# Agents, Park et al. 2023). A sum, not a product: relevance leads, so a highly
+# relevant memory is never buried just for being low-importance — while importance
+# and recency still break ties and surface what matters. (Weights tuned on eval.py.)
+W_RELEVANCE = 1.0
+W_IMPORTANCE = 0.3
+W_RECENCY = 0.3
 
 
 # =====================================================================
@@ -110,8 +122,8 @@ def extract_and_store(candidate_id, interviewer_msg):
 # =====================================================================
 def retrieve(candidate_id, query, k=TOP_K):
     """
-    Embed the query, score every active memory by
-        cosine_similarity  x  decayed_importance  x  recency
+    Embed the query, score every active memory by the weighted SUM
+        W_RELEVANCE*relevance + W_IMPORTANCE*importance + W_RECENCY*recency
     and return the top-k. Retrieving a memory also 'touches' it (resets its
     recency), so useful memories stay alive longer.
     """
@@ -125,10 +137,13 @@ def retrieve(candidate_id, query, k=TOP_K):
     scored = []
     for m in memories:
         mem_vec = np.array(m["embedding"])
-        similarity = _cosine(query_vec, mem_vec)
-        importance = _decayed_importance(m, now)   # importance faded by age
-        recency = _recency_weight(m["last_accessed_at"], now)
-        score = similarity * importance * recency
+        relevance = max(0.0, _cosine(query_vec, mem_vec))  # 0..1
+        importance = m["importance"] / 10.0                # static baseline, 0..1
+        recency = _recency_weight(m["last_accessed_at"], now)  # 0..1, decays on age
+        # Weighted SUM — age enters exactly once (recency); importance is the static
+        # baseline. (Earlier this was a product that both squared the age term and
+        # let importance drown out relevance; eval.py recall improved after the fix.)
+        score = W_RELEVANCE * relevance + W_IMPORTANCE * importance + W_RECENCY * recency
         scored.append((score, m))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -152,12 +167,15 @@ def decay_and_consolidate(candidate_id):
     """
     now = time.time()
 
-    # (a) DECAY -----------------------------------------------------
+    # (a) DECAY / FORGETTING ---------------------------------------
+    # Importance stays a STATIC baseline in storage; forgetting is a live function
+    # of time-since-last-access. We only ARCHIVE here (an irreversible commitment) —
+    # we never write the faded value back, so decay can't compound across the many
+    # housekeeping runs that happen in a single session (which would wrongly wipe
+    # untouched memories after a few messages).
     archived = 0
     for m in db.get_active_memories(candidate_id):
-        faded = _decayed_importance(m, now)
-        db.update_importance(m["id"], round(faded, 3))
-        if faded < ARCHIVE_THRESHOLD:
+        if _decayed_importance(m, now) < ARCHIVE_THRESHOLD:
             db.archive_memory(m["id"])
             archived += 1
 
@@ -194,11 +212,70 @@ def decay_and_consolidate(candidate_id):
     return {"consolidated": len(batch), "archived": archived}
 
 
+# =====================================================================
+# 4. REFLECTION  (higher-order memory)
+# =====================================================================
+REFLECT_MIN_FACTS = 3      # need at least this many raw facts to generalise from
+INSIGHT_MIN_IMPORTANCE = 7 # insights outrank raw facts so they steer recommendations
+
+
+def reflect(candidate_id):
+    """
+    Turn many low-level facts into a few higher-order INSIGHTS — the thing that
+    makes understanding *deepen* over time instead of just accumulate.
+
+    Reads the candidate's raw memories, asks Qwen to synthesise 1-2 grounded
+    trait-level judgements ("consistently safety-conscious", "reliability is her
+    standout"), and stores each as a high-importance `insight` memory. Because
+    insights are embedded and stored like any memory, they then compete in
+    retrieve() and influence future recommendations — the agent forms opinions it
+    was never explicitly told.
+
+    Idempotent-ish: an insight too similar to one already on file is skipped, so
+    re-running doesn't pile up duplicates.
+    """
+    facts = [m for m in db.get_active_memories(candidate_id)
+             if m["category"] != "insight"]
+    if len(facts) < REFLECT_MIN_FACTS:
+        return {"insights": [], "reason": "not enough facts to reflect on yet"}
+
+    joined = "\n".join(f"- {m['fact_text']}" for m in facts)
+    prompt = [
+        {"role": "system", "content": (
+            "You are a hiring assistant building a deeper understanding of a candidate. "
+            "From the raw facts below, infer 1-2 HIGHER-ORDER insights: durable traits "
+            "or patterns that no single fact states outright but several together imply. "
+            "Each must be grounded in the facts (no speculation about protected "
+            "attributes). Return ONLY a JSON array; each item "
+            '{"insight": str, "importance": integer 7-10}.'
+        )},
+        {"role": "user", "content": joined},
+    ]
+    proposed = _parse_json_array(qwen.chat(prompt, temperature=0.2))
+
+    existing_insights = [m for m in db.get_active_memories(candidate_id)
+                         if m["category"] == "insight"]
+    stored = []
+    for p in proposed:
+        text = str(p.get("insight", "")).strip()
+        if not text:
+            continue
+        importance = max(INSIGHT_MIN_IMPORTANCE, min(10, int(p.get("importance", 8))))
+        vec = np.array(qwen.embed(text))
+        match, sim = _most_similar(vec, existing_insights)
+        if match and sim >= DUP_THRESHOLD:
+            continue  # already inferred this — don't duplicate
+        db.add_memory(candidate_id, text, "insight", importance, vec.tolist())
+        existing_insights.append({"id": None, "fact_text": text, "embedding": vec.tolist()})
+        stored.append({"insight": text, "importance": importance})
+    return {"insights": stored, "from_facts": len(facts)}
+
+
 def compare(candidate_ids, question):
     """
     Cross-candidate reasoning. For the same question, recall each candidate's
-    relevant memories (reusing retrieve() — the same importance x recency ranking
-    that powers chat) and ask Qwen to weigh them against each other and recommend.
+    relevant memories (reusing retrieve() — the same relevance/importance/recency
+    ranking that powers chat) and ask Qwen to weigh them against each other and recommend.
 
     Returns {reply, candidates:[{id,name,role,recalled:[fact_text,...]}]}.
     """
@@ -313,6 +390,8 @@ if __name__ == "__main__":
     # a memory accessed one half-life ago should have ~half its importance
     fake = {"importance": 8, "last_accessed_at": time.time() - HALF_LIFE_DAYS * 86400}
     assert abs(_decayed_importance(fake, time.time()) - 4.0) < 0.05
+    # recency is the ONLY time term in retrieval ranking now (halves per half-life)
+    assert abs(_recency_weight(time.time() - HALF_LIFE_DAYS * 86400, time.time()) - 0.5) < 0.01
     # _most_similar picks the closest row (belief-update path relies on this)
     _rows = [{"embedding": [1, 0]}, {"embedding": [0, 1]}]
     _m, _s = _most_similar(np.array([1, 0]), _rows)

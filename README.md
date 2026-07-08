@@ -12,31 +12,65 @@ Built for the **Global AI Hackathon Series with Qwen Cloud — Track 1: MemoryAg
 
 Interviewers at a jute mill (Jabbar Jute Mills) talk to candidates over multiple
 sessions. RecruitMemory quietly extracts durable facts from each conversation,
-recalls only the relevant ones later, and lets old details fade — so the
-assistant behaves like a colleague who actually remembers people, not a chatbot
-with amnesia.
+recalls only the relevant ones later, lets old details fade, changes its mind
+when you correct it, and **synthesizes higher-order insights** the facts only
+imply — so the assistant behaves like a colleague who actually understands
+people, not a chatbot with amnesia.
 
-<!-- Optional: add docs/screenshot.png and uncomment for a UI preview.
-![RecruitMemory UI](docs/screenshot.png) -->
+**Not a database-backed chatbot:** it *forgets* on a decay curve, *retires*
+beliefs you overturn, and *forms opinions it was never told*. See the numbers in
+[Does the memory actually work?](#does-the-memory-actually-work) — every claim
+below is measured in [`eval.py`](eval.py).
 
-> 🎥 **Presenting?** See [DEMO.md](DEMO.md) for a 3-minute talk-track that shows all three memory mechanisms on screen.
+![RecruitMemory — synthesizing higher-order insights from a candidate's raw memories](docs/reflection.png)
+
+> 🎥 **Presenting?** See [DEMO.md](DEMO.md) for a 3-minute talk-track that shows every memory mechanism on screen.
 
 ---
 
 ## Why it fits the MemoryAgent track
 
 The whole point of the track is an agent with a real memory system, not just a
-long prompt. RecruitMemory implements **three distinct memory mechanisms**, each
+long prompt. RecruitMemory implements **four distinct memory mechanisms**, each
 its own function in [`memory.py`](memory.py):
 
 | # | Mechanism | What it does | Where |
 |---|-----------|--------------|-------|
-| 1 | **Extraction** | Reads each interviewer message and pulls out structured candidate facts (`{fact, category, importance}`), embeds each one, and stores it. Skips near-duplicates so it doesn't re-learn what it already knows. | `extract_and_store()` |
-| 2 | **Retrieval** | Embeds the current question and ranks every stored memory by `cosine similarity × decayed importance × recency`, injecting only the **top 5** into the prompt. Retrieving a memory "touches" it, keeping useful facts alive. | `retrieve()` |
-| 3 | **Decay + Consolidation** | Importance halves every 14 days without access; faded memories are archived. When a candidate accumulates too many memories, the oldest/least-important batch is summarized into one memory to keep token usage bounded. | `decay_and_consolidate()` |
+| 1 | **Extraction + belief update** | Reads each interviewer message and pulls out structured candidate facts (`{fact, category, importance}`), embeds each one, and stores it. Skips near-duplicates — and when a new fact *corrects* an old one (e.g. safety score 6→9), it **retires the stale belief** instead of hoarding both, so retrieval never surfaces a contradiction. | `extract_and_store()` |
+| 2 | **Retrieval** | Embeds the current question and ranks every stored memory by a weighted sum of `relevance + importance + recency` (Generative Agents, Park et al. 2023), injecting only the **top 5** into the prompt — so cost stays flat as history grows. Retrieving a memory "touches" it, keeping useful facts alive. | `retrieve()` |
+| 3 | **Decay + Consolidation** | Importance halves every 14 days without access; faded memories are archived (a low-value fact is forgotten in ~a week, a critical one survives a month+). When a candidate accumulates too many memories, the oldest/least-important batch is summarized into one to keep token usage bounded. | `decay_and_consolidate()` |
+| 4 | **Reflection** | Periodically reads the raw facts and synthesizes 1–2 **higher-order insights** — durable traits no single fact states ("consistent safety ownership") — stored as high-importance memories that then influence future retrieval and recommendations. This is how the agent's *understanding deepens over time* rather than just accumulating. | `reflect()` |
 
 This mirrors how human memory works: you remember what's important and recent,
-you forget trivia, and you compress old details into gist.
+you forget trivia, you compress old details into gist — and you form judgements
+that no single observation ever stated.
+
+---
+
+## Does the memory actually work?
+
+A memory agent should be *measured*, not just asserted. [`eval.py`](eval.py) runs
+five probes against the real pipeline (real Qwen embeddings, a throwaway DB):
+
+| Probe | What it tests | Result |
+|-------|---------------|--------|
+| **A. Retrieval** | Ask questions phrased differently from the stored facts — is the right memory in the injected top-5? | **recall@5 = 100%**, recall@3 = 75%, MRR = 0.65 (8 probes) |
+| **B. Ranking ablation** | On stale-but-similar distractors, how often does the ranking recover the *current* truth vs plain vector search? | **full ranking 5/5** vs cosine-only 2/5 |
+| **C. Belief update** | A correction should retire the old belief, keep the new one. | **3/3** |
+| **D. Forgetting** | A low-value memory should fade out while a high-value one survives the same elapsed time. | **3/3** |
+| **E. Reflection** | Synthesized insights should be stored *and* surface for trait-level questions. | **passes** — insight retrieved over raw facts |
+
+The ablation (B) is the headline: importance × recency weighting recovers the
+current truth **2.5× more often** than similarity alone — proof the ranking earns
+its keep. Reproduce with `python eval.py` (needs a working `QWEN_API_KEY`).
+
+```
+A. RETRIEVAL   recall@1=50%  recall@3=75%  recall@5=100%  MRR=0.65  (n=8)
+B. ABLATION    full ranking recovered current truth 5/5  vs plain cosine 2/5
+C. BELIEF UPD  old belief retired, new kept: 3/3
+D. FORGETTING  low-value archived, high-value survived: 3/3
+E. REFLECTION  insights created=2  stored_ok=True  influences_retrieval=True
+```
 
 ---
 
@@ -49,6 +83,7 @@ flowchart TD
     API -->|"1. retrieve()"| MEM["Memory engine<br/>(memory.py)"]
     API -->|"3. extract_and_store()"| MEM
     API -->|"4. decay_and_consolidate()"| MEM
+    API -->|"reflect() (on demand)"| MEM
 
     MEM <-->|"embeddings + facts"| DB[("SQLite<br/>recruitmemory.db")]
     MEM -->|"chat + embed"| QWEN["Qwen Cloud<br/>(qwen-plus, text-embedding-v3)"]
@@ -60,9 +95,10 @@ flowchart TD
     API -->|"reply + recalled + new_facts"| UI
 ```
 
-**One chat request does all three mechanisms in order:** retrieve relevant
-memories → ask Qwen for a reply using them → extract new facts → run decay &
-consolidation housekeeping.
+**One chat request runs the core loop in order:** retrieve relevant memories →
+ask Qwen for a reply using them → extract new facts (with belief-update) → run
+decay & consolidation housekeeping. **Reflection** runs on demand (the "Synthesize
+insights" button / `POST /reflect`) to distil the accumulated facts into insights.
 
 ### Stack
 - **Backend:** FastAPI + uvicorn (Python 3.10)
@@ -126,7 +162,8 @@ python backup.py restore  # pull the newest backup back down
 | `POST` | `/candidates` | Create a candidate `{name, role}` |
 | `GET`  | `/candidates` | List candidates |
 | `POST` | `/candidates/{id}/chat` | Chat — recalls memories, replies, extracts new facts |
-| `GET`  | `/candidates/{id}/memories` | Inspect stored memories (for the demo) |
+| `POST` | `/candidates/{id}/reflect` | Synthesize higher-order insights from the raw facts |
+| `GET`  | `/candidates/{id}/memories` | Inspect stored memories (live decayed strength) |
 
 ---
 
@@ -138,6 +175,31 @@ python backup.py restore  # pull the newest backup back down
 3. Ask later: *"Is Karim a good fit for a senior loom role?"* — it recalls the
    relevant facts and answers with them. Watch the newly-extracted facts appear
    as pills under your message.
+
+---
+
+## Responsible use & limitations
+
+Hiring is a high-stakes, legally sensitive domain, so RecruitMemory is built as
+**decision-support, not a decision-maker**:
+
+- **A human makes the hiring call.** The assistant surfaces and weighs remembered
+  facts; it never issues an autonomous hire/reject verdict. This is stated in the
+  UI on every screen.
+- **Every recommendation is auditable.** The exact memories behind any answer are
+  shown (the "recalled" list and the Compare evidence columns) — no black-box scores.
+- **Memories are inspectable and deletable.** You can view a candidate's full
+  memory store and delete a candidate (and all their memories) at any time, so
+  there is a clear path to correct or erase what the system holds.
+- **No protected attributes.** Extraction and reflection are prompted to capture
+  only job-relevant facts and to avoid inferring protected characteristics; a
+  reviewer should still check memories for proxy bias before relying on them.
+- **Fictional data.** The jute-mill scenario and all candidates are illustrative;
+  the project ships with no real personal data.
+
+RecruitMemory is a demonstration of memory-agent techniques, not a production
+hiring system — a real deployment would need bias auditing, access controls, and
+compliance review.
 
 ---
 

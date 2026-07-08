@@ -3,11 +3,18 @@ app.py — the FastAPI web server. Wires the memory engine to HTTP endpoints and
 serves the single-page frontend.
 
 Endpoints:
-  POST /candidates                 create a candidate
-  GET  /candidates                 list candidates
-  POST /candidates/{id}/chat       chat about a candidate (recall + reply + extract)
-  GET  /candidates/{id}/memories   view stored memories (for the demo/debugging)
+  POST   /candidates                 create a candidate
+  GET    /candidates                 list candidates
+  DELETE /candidates/{id}            delete a candidate and all their memories
+  POST   /candidates/{id}/chat       chat about a candidate (recall + reply + extract)
+  POST   /candidates/{id}/reflect    synthesize higher-order insights (mechanism 4)
+  POST   /candidates/{id}/simulate   demo time-machine: fast-forward decay
+  GET    /candidates/{id}/memories   view stored memories (live decayed strength)
+  POST   /seed-demo                  one-click demo candidate
+  POST   /compare                    cross-candidate reasoning
 """
+
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -51,11 +58,24 @@ def get_candidates():
     return db.list_candidates()
 
 
+@app.delete("/candidates/{candidate_id}")
+def remove_candidate(candidate_id: int):
+    """Delete a candidate and all their memories (keeps the demo/rehearsals clean)."""
+    if not db.get_candidate(candidate_id):
+        raise HTTPException(404, "candidate not found")
+    db.delete_candidate(candidate_id)
+    return {"ok": True}
+
+
 @app.post("/candidates/{candidate_id}/chat")
 def chat(candidate_id: int, body: ChatIn):
     candidate = db.get_candidate(candidate_id)
     if not candidate:
         raise HTTPException(404, "candidate not found")
+
+    # Size of the memory pool retrieval will search — so the UI can show
+    # "recalled 5 of N", making the "cost stays flat as history grows" claim visible.
+    total_active = len(db.get_active_memories(candidate_id))
 
     # 1. RETRIEVAL: pull only the memories relevant to this message.
     recalled = memory.retrieve(candidate_id, body.message)
@@ -85,6 +105,7 @@ def chat(candidate_id: int, body: ChatIn):
     return {
         "reply": reply,
         "recalled": [m["fact_text"] for m in recalled],
+        "total_active": total_active,   # pool size retrieval ranked (for the "5 of N" proof)
         "new_facts": new_facts,
         "housekeeping": housekeeping,
     }
@@ -125,6 +146,14 @@ def compare(body: CompareIn):
     return memory.compare(ids, body.question)
 
 
+@app.post("/candidates/{candidate_id}/reflect")
+def reflect(candidate_id: int):
+    """Synthesize higher-order insights from this candidate's raw memories."""
+    if not db.get_candidate(candidate_id):
+        raise HTTPException(404, "candidate not found")
+    return memory.reflect(candidate_id)
+
+
 @app.post("/candidates/{candidate_id}/simulate")
 def simulate(candidate_id: int, body: SimulateIn):
     """Demo control: fast-forward this candidate's memory clock and run decay."""
@@ -137,10 +166,16 @@ def simulate(candidate_id: int, body: SimulateIn):
 
 @app.get("/candidates/{candidate_id}/memories")
 def get_memories(candidate_id: int):
-    # includes archived=0 only; strip the big embedding vector from the response
+    # includes archived=0 only; strip the big embedding vector from the response.
+    # `importance` here is the LIVE decayed strength (baseline faded by time since
+    # last access), so the UI bars reflect true current strength and shrink when a
+    # judge advances the clock. `base_importance` keeps the static value for reference.
+    now = time.time()
     mems = db.get_active_memories(candidate_id)
     for m in mems:
         m.pop("embedding", None)
+        m["base_importance"] = m["importance"]
+        m["importance"] = round(memory._decayed_importance(m, now), 3)
     return mems
 
 
