@@ -74,6 +74,9 @@ D. FORGETTING  low-value archived, high-value survived: 3/3
 E. REFLECTION  insights created=2  stored_ok=True  influences_retrieval=True
 ```
 
+*One representative run. Small variation is expected with model sampling (e.g.
+reflection yields 1–2 insights); recall@5 was 100% in our runs.*
+
 ---
 
 ## Architecture
@@ -204,6 +207,11 @@ Hiring is a high-stakes, legally sensitive domain, so RecruitMemory is built as
 - **No protected attributes.** Extraction and reflection are prompted to capture
   only job-relevant facts and to avoid inferring protected characteristics; a
   reviewer should still check memories for proxy bias before relying on them.
+- **Insights are inferences, not observations.** The higher-order insights the
+  agent synthesizes are its *own* generalizations from the facts — hypotheses to
+  verify, not established truths. They live in a distinct, clearly-labelled
+  category and are auditable and deletable like any other memory, so a reviewer
+  can always separate what was *observed* from what the agent *inferred*.
 - **Fictional data.** The jute-mill scenario and all candidates are illustrative;
   the project ships with no real personal data.
 
