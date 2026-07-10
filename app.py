@@ -75,11 +75,12 @@ def chat(candidate_id: int, body: ChatIn):
 
     # Size of the memory pool retrieval will search, so the UI can show
     # "recalled 5 of N", making the "cost stays flat as history grows" claim visible.
-    total_active = len(db.get_active_memories(candidate_id))
+    # COUNT only: no need to load + JSON-decode every embedding just to size the pool.
+    total_active = db.count_active_memories(candidate_id)
 
     # 1. RETRIEVAL: pull only the memories relevant to this message.
     recalled = memory.retrieve(candidate_id, body.message)
-    memory_block = "\n".join(f"- {m['fact_text']}" for m in recalled) or "(none yet)"
+    memory_block = memory._bullets(recalled, "(none yet)")
 
     # 2. Build the prompt with ONLY the relevant memories injected.
     messages = [

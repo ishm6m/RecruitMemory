@@ -87,8 +87,7 @@ def extract_and_store(candidate_id, interviewer_msg):
         if not fact_text:
             continue
         category = f.get("category", "note")
-        # clamp importance into 1..10 in case the model returns something odd
-        importance = max(1, min(10, int(f.get("importance", 5))))
+        importance = _clamp_importance(f.get("importance", 5), 5)
         vec = np.array(qwen.embed(fact_text))
 
         # Find the most-similar thing we already know. High cosine means same topic:
@@ -188,7 +187,7 @@ def decay_and_consolidate(candidate_id):
     active.sort(key=lambda m: (m["importance"], m["last_accessed_at"]))
     batch = active[:CONSOLIDATE_BATCH]
 
-    joined = "\n".join(f"- {m['fact_text']}" for m in batch)
+    joined = _bullets(batch)
     prompt = [
         {
             "role": "system",
@@ -199,7 +198,12 @@ def decay_and_consolidate(candidate_id):
         },
         {"role": "user", "content": joined},
     ]
-    summary = qwen.chat(prompt, temperature=0).strip()
+    # `content` can come back None (length cutoff, refusal); `or ""` keeps .strip()
+    # from crashing. An empty summary must NOT archive the batch behind it (that
+    # would silently drop those facts), so bail out and leave them active.
+    summary = (qwen.chat(prompt, temperature=0) or "").strip()
+    if not summary:
+        return {"consolidated": 0, "archived": archived}
 
     # store the single summary (importance = the max of what it replaced)
     summary_importance = max(m["importance"] for m in batch)
@@ -261,7 +265,7 @@ def reflect(candidate_id):
     if len(facts) < REFLECT_MIN_FACTS:
         return {"insights": [], "reason": "not enough facts to reflect on yet"}
 
-    joined = "\n".join(f"- {m['fact_text']}" for m in facts)
+    joined = _bullets(facts)
     prompt = [
         {"role": "system", "content": (
             "You are a hiring assistant building a deeper understanding of a candidate. "
@@ -282,7 +286,7 @@ def reflect(candidate_id):
         text = str(p.get("insight", "")).strip()
         if not text:
             continue
-        importance = max(INSIGHT_MIN_IMPORTANCE, min(10, int(p.get("importance", 8))))
+        importance = _clamp_importance(p.get("importance", 8), 8, INSIGHT_MIN_IMPORTANCE)
         vec = np.array(qwen.embed(text))
         match, sim = _most_similar(vec, existing_insights)
         if match and sim >= DUP_THRESHOLD:
@@ -308,7 +312,7 @@ def compare(candidate_ids, question):
             continue
         facts = [m["fact_text"] for m in retrieve(cid, question)]
         per.append({"id": cid, "name": cand["name"], "role": cand["role"], "recalled": facts})
-        joined = "\n".join(f"- {t}" for t in facts) or "(no relevant memories yet)"
+        joined = _bullets(facts, "(no relevant memories yet)")
         blocks.append(f"{cand['name']} ({cand['role'] or 'no role'}):\n{joined}")
 
     prompt = [
@@ -338,6 +342,23 @@ def simulate_days(candidate_id, days):
 # =====================================================================
 # helpers
 # =====================================================================
+def _clamp_importance(value, default, lo=1, hi=10):
+    """Coerce a model-supplied importance into an int in [lo, hi], tolerating junk
+    like "high", 7.5, or null without crashing the request that triggered it."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        n = default
+    return max(lo, min(hi, n))
+
+
+def _bullets(items, empty=""):
+    """A '- ' bullet list of fact texts. `items` may be memory rows (dicts with
+    fact_text) or plain strings; empty input renders as `empty`."""
+    texts = [i["fact_text"] if isinstance(i, dict) else i for i in items]
+    return "\n".join(f"- {t}" for t in texts) or empty
+
+
 def _cosine(a, b):
     """Cosine similarity between two vectors (1 = identical, 0 = unrelated)."""
     denom = (np.linalg.norm(a) * np.linalg.norm(b))
@@ -423,4 +444,11 @@ if __name__ == "__main__":
     # auto-reflect gate: fires on a full batch of unreflected facts, not before
     assert _should_reflect(4, 0) and not _should_reflect(3, 0)
     assert not _should_reflect(4, 1) and _should_reflect(8, 1)
+    # importance parse survives junk the model might return, and stays in range
+    assert _clamp_importance("high", 5) == 5 and _clamp_importance(None, 5) == 5
+    assert _clamp_importance("11", 5) == 10 and _clamp_importance(0, 5) == 1
+    assert _clamp_importance(7.9, 5) == 7 and _clamp_importance("3", 8, 7) == 7
+    # bullets renders rows or plain strings, and falls back when empty
+    assert _bullets([{"fact_text": "a"}, "b"]) == "- a\n- b"
+    assert _bullets([], "(none)") == "(none)"
     print("memory.py self-checks passed")

@@ -113,6 +113,16 @@ def get_active_memories(candidate_id):
     return out
 
 
+def count_active_memories(candidate_id):
+    """How many active memories a candidate has, without decoding embeddings.
+    Cheap COUNT for callers (e.g. the "5 of N" UI proof) that only need the size."""
+    row = _c.execute(
+        "SELECT COUNT(*) AS n FROM memories WHERE candidate_id = ? AND archived = 0",
+        (candidate_id,),
+    ).fetchone()
+    return row["n"]
+
+
 def touch_memories(memory_ids):
     """Mark memories as just-accessed (resets their recency for decay)."""
     if not memory_ids:
@@ -133,11 +143,6 @@ def age_memories(candidate_id, seconds):
         "WHERE candidate_id = ? AND archived = 0",
         (seconds, candidate_id),
     )
-    _c.commit()
-
-
-def update_importance(memory_id, importance):
-    _c.execute("UPDATE memories SET importance = ? WHERE id = ?", (importance, memory_id))
     _c.commit()
 
 
