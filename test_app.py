@@ -227,6 +227,32 @@ def test_list_interviews_returns_transcript():
     assert client.get("/candidates/999999/interviews").status_code == 404
 
 
+def test_note_during_interview_tags_manual_note():
+    cid = client.post("/candidates", json={"name": "Noted"}).json()["id"]
+    assert client.post(f"/candidates/{cid}/notes", json={"text": "  "}).status_code == 400
+    assert client.post("/candidates/999999/notes", json={"text": "x"}).status_code == 404
+    body = client.post(f"/candidates/{cid}/notes",
+                       json={"text": "Noted showed a forklift certificate."}).json()
+    assert len(body["new_facts"]) == 1              # same extraction pipeline
+    mems = db.get_active_memories(cid)
+    assert mems[0]["source"] == "manual_note"
+
+
+def test_sources_distinguish_spoken_from_typed():
+    cid = client.post("/candidates", json={"name": "Sourced"}).json()["id"]
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    _fake_transcripts.append("Sourced repaired looms for 3 years.")
+    client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"})
+    client.post(f"/interviews/{iid}/end")
+    client.post(f"/candidates/{cid}/notes", json={"text": "Sourced arrived 20 minutes late."})
+    sources = {m["fact_text"]: m["source"] for m in db.get_active_memories(cid)}
+    assert sources["Sourced repaired looms for 3 years."] == "live_transcript"
+    assert sources["Sourced arrived 20 minutes late."] == "manual_note"
+    # the memories endpoint exposes the source so the UI can label each fact
+    assert all("source" in m for m in client.get(f"/candidates/{cid}/memories").json())
+
+
 # --- cross-candidate ask ------------------------------------------------
 def test_ask_searches_across_all_candidates():
     a = client.post("/candidates", json={"name": "AskKarim"}).json()["id"]

@@ -61,6 +61,10 @@ class NewInterview(BaseModel):
     consent_confirmed: bool = False
 
 
+class NoteIn(BaseModel):
+    text: str
+
+
 class AudioIn(BaseModel):
     audio_b64: str
 
@@ -99,9 +103,12 @@ def chat(candidate_id: int, body: ChatIn):
     # COUNT only: no need to load + JSON-decode every embedding just to size the pool.
     total_active = db.count_active_memories(candidate_id)
 
-    # 1. RETRIEVAL: pull only the memories relevant to this message.
+    # 1. RETRIEVAL: pull only the memories relevant to this message. Each fact
+    # carries its source so "where did this come from?" is answerable in chat.
     recalled = memory.retrieve(candidate_id, body.message)
-    memory_block = memory._bullets(recalled, "(none yet)")
+    memory_block = "\n".join(
+        f"- [from {m['source']}] {m['fact_text']}" for m in recalled
+    ) or "(none yet)"
 
     # 2. Build the prompt with ONLY the relevant memories injected.
     messages = [
@@ -111,7 +118,10 @@ def chat(candidate_id: int, body: ChatIn):
                 f"You are a hiring assistant for Jabbar Jute Mills, discussing the "
                 f"candidate {candidate['name']} ({candidate['role']}). "
                 f"Use these remembered facts about them:\n{memory_block}\n"
-                "Answer the interviewer concisely."
+                "Each fact is prefixed with its source (manual_note = typed by "
+                "the recruiter, live_transcript = spoken in a recorded interview, "
+                "resume = the candidate's uploaded resume). If asked where "
+                "something came from, say so. Answer the interviewer concisely."
             ),
         },
         {"role": "user", "content": body.message},
@@ -218,6 +228,18 @@ def get_memories(candidate_id: int):
     return mems
 
 
+@app.post("/candidates/{candidate_id}/notes")
+def add_note(candidate_id: int, body: NoteIn):
+    """A quick typed note, usable while an interview is recording: the same
+    extraction pipeline as everything else, tagged source=manual_note, but no
+    chat reply (mid-interview, the recruiter just wants the fact captured)."""
+    if not db.get_candidate(candidate_id):
+        raise HTTPException(404, "candidate not found")
+    if not body.text.strip():
+        raise HTTPException(400, "note text is required")
+    return {"new_facts": memory.extract_and_store(candidate_id, body.text)}
+
+
 @app.post("/ask")
 def ask(body: AskIn):
     """Query across ALL candidates' memories. Read-only: stores nothing."""
@@ -316,7 +338,8 @@ def interview_audio(interview_id: int, body: AudioIn):
         complete, fragment = pending, ""
     _carry[interview_id] = fragment
 
-    new_facts = memory.extract_and_store(iv["candidate_id"], complete) if complete else []
+    new_facts = memory.extract_and_store(
+        iv["candidate_id"], complete, source="live_transcript") if complete else []
     return {"text": text, "new_facts": new_facts}
 
 
@@ -330,7 +353,8 @@ def end_interview(interview_id: int):
 
     _tail_words.pop(interview_id, None)
     leftover = _carry.pop(interview_id, "").strip()
-    new_facts = memory.extract_and_store(iv["candidate_id"], leftover) if leftover else []
+    new_facts = memory.extract_and_store(
+        iv["candidate_id"], leftover, source="live_transcript") if leftover else []
 
     db.end_interview(interview_id)
     housekeeping = memory.decay_and_consolidate(iv["candidate_id"])

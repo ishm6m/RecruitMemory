@@ -49,6 +49,7 @@ def init_db():
             created_at       REAL NOT NULL,
             last_accessed_at REAL NOT NULL,
             archived         INTEGER NOT NULL DEFAULT 0,  -- 0 = active, 1 = archived
+            source           TEXT NOT NULL DEFAULT 'manual_note',
             FOREIGN KEY (candidate_id) REFERENCES candidates(id)
         );
 
@@ -63,6 +64,11 @@ def init_db():
         );
         """
     )
+    # Databases created before the source column existed get it added in place.
+    # Old rows default to 'manual_note': their true origin was never recorded.
+    cols = [r[1] for r in _c.execute("PRAGMA table_info(memories)")]
+    if "source" not in cols:
+        _c.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT 'manual_note'")
     _c.commit()
 
 
@@ -144,15 +150,19 @@ def end_interview(interview_id):
 
 # ---------- memories ----------
 
-def add_memory(candidate_id, fact_text, category, importance, embedding):
+def add_memory(candidate_id, fact_text, category, importance, embedding,
+               source="manual_note"):
+    """`source` records where the fact came from: manual_note (typed),
+    live_transcript (spoken in an interview), resume (uploaded document),
+    or the engine's own consolidation/reflection output."""
     now = time.time()
     _c.execute(
         """INSERT INTO memories
            (candidate_id, fact_text, category, importance, embedding,
-            created_at, last_accessed_at, archived)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
+            created_at, last_accessed_at, archived, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
         (candidate_id, fact_text, category, importance,
-         json.dumps(embedding), now, now),
+         json.dumps(embedding), now, now, source),
     )
     _c.commit()
 

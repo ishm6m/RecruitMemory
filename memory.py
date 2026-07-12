@@ -50,11 +50,13 @@ W_RECENCY = 0.3
 # =====================================================================
 # 1. EXTRACTION
 # =====================================================================
-def extract_and_store(candidate_id, interviewer_msg):
+def extract_and_store(candidate_id, interviewer_msg, source="manual_note"):
     """
     Ask Qwen to read the interviewer's latest message and return NEW candidate
     facts as structured JSON: [{fact, category, importance}]. Each fact is
-    embedded and stored as its own memory row.
+    embedded and stored as its own memory row, tagged with `source` so the
+    record always shows where a fact came from (typed note, live interview,
+    or an uploaded resume).
 
     We extract from the interviewer's message only (not the agent's reply): the
     reply just parrots back recalled facts, which would create duplicates.
@@ -64,7 +66,8 @@ def extract_and_store(candidate_id, interviewer_msg):
             "role": "system",
             "content": (
                 "You extract durable facts about a job candidate from an "
-                "interview conversation. Return ONLY a JSON array. Each item: "
+                "interview conversation or a candidate document such as a "
+                "resume. Return ONLY a JSON array. Each item: "
                 '{"fact": str, "category": one of '
                 '["skill","score","red_flag","experience","note"], '
                 '"importance": integer 1-10}. '
@@ -105,7 +108,7 @@ def extract_and_store(candidate_id, interviewer_msg):
                 continue  # genuine duplicate, already known, skip
 
         emb_list = vec.tolist()
-        db.add_memory(candidate_id, fact_text, category, importance, emb_list)
+        db.add_memory(candidate_id, fact_text, category, importance, emb_list, source)
         # reflect this new fact in `existing` so later facts in the same batch see it
         existing.append({"id": None, "fact_text": fact_text, "category": category,
                          "importance": importance, "embedding": emb_list})
@@ -245,7 +248,8 @@ def decay_and_consolidate(candidate_id):
     # store the single summary (importance = the max of what it replaced)
     summary_importance = max(m["importance"] for m in batch)
     db.add_memory(
-        candidate_id, summary, "summary", summary_importance, qwen.embed(summary)
+        candidate_id, summary, "summary", summary_importance, qwen.embed(summary),
+        source="consolidation",
     )
     for m in batch:
         db.archive_memory(m["id"])
@@ -328,7 +332,8 @@ def reflect(candidate_id):
         match, sim = _most_similar(vec, existing_insights)
         if match and sim >= DUP_THRESHOLD:
             continue  # already inferred this, don't duplicate
-        db.add_memory(candidate_id, text, "insight", importance, vec.tolist())
+        db.add_memory(candidate_id, text, "insight", importance, vec.tolist(),
+                      source="reflection")
         existing_insights.append({"id": None, "fact_text": text, "embedding": vec.tolist()})
         stored.append({"insight": text, "importance": importance})
     return {"insights": stored, "from_facts": len(facts)}

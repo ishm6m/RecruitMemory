@@ -335,6 +335,20 @@
                 <div class="text-11 fw-650 uppercase track-wide text-text-tertiary mb-2">Live transcript</div>
                 <div id="ivTranscript" class="flex-1 overflow-y-auto bg-surface border border-border rounded-xl p-4
                                               flex flex-col gap-2.5 text-14 leading-relaxed"></div>
+                <!-- Secondary to the transcript: a typed note for what the mic can't hear
+                     (arrived late, showed a certificate, a gut impression). -->
+                <div id="ivNoteRow" class="mt-2.5 flex items-center gap-2">
+                  <input id="ivNote" placeholder="Type a note the mic can't capture…"
+                         onkeydown="if(event.key==='Enter')sendIvNote()"
+                         class="flex-1 min-w-0 bg-surface border border-border rounded-lg px-3 py-2 text-13 fw-450
+                                placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors" />
+                  <button id="ivNoteBtn" onclick="sendIvNote()"
+                          class="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-border bg-surface
+                                 px-3 py-2 text-13 fw-550 text-text-secondary hover:text-accent hover:border-accent/40
+                                 transition-colors disabled:opacity-50">
+                    <i class="hgi-stroke hgi-add-01 text-14"></i> Add note
+                  </button>
+                </div>
               </div>
               <!-- right: facts extracted in real time -->
               <div class="w-full md:w-[360px] min-h-0 flex flex-col shrink-0">
@@ -381,6 +395,13 @@ const CATS = {
 };
 const CAT_ORDER = ['insight', 'skill', 'score', 'experience', 'red_flag', 'summary', 'note'];
 const cat = (c) => CATS[c] || CATS.note;
+
+// Human labels for where a memory came from (the `source` column).
+const SOURCES = {
+  manual_note: 'typed note', live_transcript: 'interview', resume: 'resume',
+  consolidation: 'consolidated', reflection: 'reflection',
+};
+const srcLabel = (s) => SOURCES[s] || '';
 
 // A quiet 0..10 importance bar, reused on chips and in the drawer. Inherits text color.
 function impMeter(importance) {
@@ -1002,6 +1023,7 @@ async function renderRecord() {
         section.insertAdjacentHTML('beforeend',
           `<div class="py-2 flex items-center gap-3">` +
             `<div class="min-w-0 flex-1 text-14 fw-450 leading-relaxed">${esc(m.fact_text)}</div>` +
+            `<span class="text-11 text-text-tertiary fw-450 shrink-0">${srcLabel(m.source)}</span>` +
             `<span title="strength ${m.importance} of 10" style="color:${info.color}">${impMeter(m.importance)}</span>` +
           `</div>`);
       }
@@ -1119,6 +1141,8 @@ function startCapture(id, stream) {
     `<div class="text-13 text-text-tertiary fw-450 italic">Listening… words appear a few seconds after they are spoken.</div>`;
   $('ivFacts').innerHTML =
     `<div id="ivFactsHint" class="text-13 text-text-tertiary fw-450 italic">Facts the memory engine extracts will slide in here.</div>`;
+  $('ivNote').value = '';
+  $('ivNoteRow').classList.remove('hidden');
   // Reset the header from the previous session's closing state.
   $('ivStatus').innerHTML = `<span class="pulse-dot rec"></span> Recording
     <span id="ivTimer" class="font-mono text-13 text-text-secondary fw-450">00:00</span>`;
@@ -1249,6 +1273,33 @@ function appendTranscriptLine(text) {
   box.scrollTop = box.scrollHeight;
 }
 
+// Typed note during a live recording: same extraction pipeline, tagged
+// manual_note server-side. Echoed into the transcript view marked "note" so
+// the chronology stays readable; its facts slide into "Memories forming".
+async function sendIvNote() {
+  if (!iv) return;
+  const inp = $('ivNote');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  const box = $('ivTranscript');
+  const row = document.createElement('div');
+  row.className = 'msg-in flex gap-2.5 items-baseline';
+  row.innerHTML =
+    `<span class="font-mono text-11 text-accent shrink-0">note</span>` +
+    `<span class="text-14 leading-relaxed italic text-text-secondary">${esc(text)}</span>`;
+  box.appendChild(row);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await postJSON(`/candidates/${currentId}/notes`, { text });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    appendLiveFacts((await r.json()).new_facts || []);
+  } catch (e) {
+    row.insertAdjacentHTML('beforeend',
+      `<span class="text-12 text-danger fw-450 shrink-0">couldn't save</span>`);
+  }
+}
+
 // New facts slide in as the same accent chips the chat uses (shared memoryChip()).
 function appendLiveFacts(facts) {
   const box = $('ivFacts');
@@ -1274,6 +1325,7 @@ async function endInterview() {
   const s = iv;
   iv = null;                       // stop accepting new slices immediately
   $('ivEndBtn').disabled = true;
+  $('ivNoteRow').classList.add('hidden');   // session over; notes go via the composer now
   clearInterval(s.sliceTimer);
   clearInterval(s.clockTimer);
 
