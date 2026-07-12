@@ -51,6 +51,16 @@ def init_db():
             archived         INTEGER NOT NULL DEFAULT 0,  -- 0 = active, 1 = archived
             FOREIGN KEY (candidate_id) REFERENCES candidates(id)
         );
+
+        CREATE TABLE IF NOT EXISTS interviews (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id         INTEGER NOT NULL,
+            consent_confirmed_at REAL NOT NULL,  -- no row without logged consent
+            started_at           REAL NOT NULL,
+            ended_at             REAL,           -- NULL = still in progress
+            transcript           TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id)
+        );
         """
     )
     _c.commit()
@@ -78,9 +88,57 @@ def get_candidate(candidate_id):
 
 
 def delete_candidate(candidate_id):
-    """Remove a candidate and all of their memories."""
+    """Remove a candidate and all of their memories and interviews."""
     _c.execute("DELETE FROM memories WHERE candidate_id = ?", (candidate_id,))
+    _c.execute("DELETE FROM interviews WHERE candidate_id = ?", (candidate_id,))
     _c.execute("DELETE FROM candidates WHERE id = ?", (candidate_id,))
+    _c.commit()
+
+
+# ---------- interviews ----------
+
+def create_interview(candidate_id):
+    """Start a consented interview session. Consent is logged by existing:
+    this row is only ever created after the recruiter confirms the candidate
+    was informed, so consent_confirmed_at doubles as the audit timestamp."""
+    now = time.time()
+    cur = _c.execute(
+        "INSERT INTO interviews (candidate_id, consent_confirmed_at, started_at) "
+        "VALUES (?, ?, ?)",
+        (candidate_id, now, now),
+    )
+    _c.commit()
+    return {"id": cur.lastrowid, "candidate_id": candidate_id,
+            "consent_confirmed_at": now, "started_at": now}
+
+
+def get_interview(interview_id):
+    row = _c.execute("SELECT * FROM interviews WHERE id = ?", (interview_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_interviews(candidate_id):
+    """All of a candidate's interview sessions, newest first, with transcripts."""
+    rows = _c.execute(
+        "SELECT * FROM interviews WHERE candidate_id = ? ORDER BY started_at DESC",
+        (candidate_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def append_transcript(interview_id, line):
+    _c.execute(
+        "UPDATE interviews SET transcript = transcript || ? WHERE id = ?",
+        (line, interview_id),
+    )
+    _c.commit()
+
+
+def end_interview(interview_id):
+    _c.execute(
+        "UPDATE interviews SET ended_at = ? WHERE id = ?",
+        (time.time(), interview_id),
+    )
     _c.commit()
 
 
@@ -113,6 +171,31 @@ def get_active_memories(candidate_id):
     return out
 
 
+def get_all_active_memories():
+    """All non-archived memories across every candidate, with candidate names,
+    for cross-candidate queries. Embeddings decoded to lists."""
+    rows = _c.execute(
+        "SELECT m.*, c.name AS candidate_name FROM memories m "
+        "JOIN candidates c ON c.id = m.candidate_id WHERE m.archived = 0"
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["embedding"] = json.loads(d["embedding"])
+        out.append(d)
+    return out
+
+
+def count_active_memories(candidate_id):
+    """How many active memories a candidate has, without decoding embeddings.
+    Cheap COUNT for callers (e.g. the "5 of N" UI proof) that only need the size."""
+    row = _c.execute(
+        "SELECT COUNT(*) AS n FROM memories WHERE candidate_id = ? AND archived = 0",
+        (candidate_id,),
+    ).fetchone()
+    return row["n"]
+
+
 def touch_memories(memory_ids):
     """Mark memories as just-accessed (resets their recency for decay)."""
     if not memory_ids:
@@ -133,11 +216,6 @@ def age_memories(candidate_id, seconds):
         "WHERE candidate_id = ? AND archived = 0",
         (seconds, candidate_id),
     )
-    _c.commit()
-
-
-def update_importance(memory_id, importance):
-    _c.execute("UPDATE memories SET importance = ? WHERE id = ?", (importance, memory_id))
     _c.commit()
 
 
