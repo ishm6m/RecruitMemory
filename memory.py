@@ -119,14 +119,13 @@ def extract_and_store(candidate_id, interviewer_msg):
 # =====================================================================
 # 2. RETRIEVAL
 # =====================================================================
-def retrieve(candidate_id, query, k=TOP_K):
+def _rank(memories, query, k):
     """
-    Embed the query, score every active memory by the weighted SUM
+    Score memories by the weighted SUM
         W_RELEVANCE*relevance + W_IMPORTANCE*importance + W_RECENCY*recency
     and return the top-k. Retrieving a memory also 'touches' it (resets its
     recency), so useful memories stay alive longer.
     """
-    memories = db.get_active_memories(candidate_id)
     if not memories:
         return []
 
@@ -152,32 +151,15 @@ def retrieve(candidate_id, query, k=TOP_K):
     return top
 
 
+def retrieve(candidate_id, query, k=TOP_K):
+    """Top-k memories for ONE candidate, ranked by relevance+importance+recency."""
+    return _rank(db.get_active_memories(candidate_id), query, k)
+
+
 def retrieve_global(query, k=8):
-    """
-    Cross-candidate retrieval: same weighted-sum ranking as retrieve(), but over
-    EVERY candidate's active memories in one pool. Each result carries the
-    candidate's name so answers can say who each fact belongs to.
-    """
-    memories = db.get_all_active_memories()
-    if not memories:
-        return []
-
-    query_vec = np.array(qwen.embed(query))
-    now = time.time()
-
-    scored = []
-    for m in memories:
-        relevance = max(0.0, _cosine(query_vec, np.array(m["embedding"])))
-        importance = m["importance"] / 10.0
-        recency = _recency_weight(m["last_accessed_at"], now)
-        scored.append((W_RELEVANCE * relevance + W_IMPORTANCE * importance
-                       + W_RECENCY * recency, m))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = [m for _, m in scored[:k]]
-
-    db.touch_memories([m["id"] for m in top])
-    return top
+    """Same ranking over EVERY candidate's active memories in one pool. Each
+    result carries the candidate's name so answers can say who a fact belongs to."""
+    return _rank(db.get_all_active_memories(), query, k)
 
 
 def ask_all(question):

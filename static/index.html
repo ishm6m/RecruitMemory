@@ -364,6 +364,11 @@ const $ = (id) => document.getElementById(id);
 const chat = $('chat');       // the scroller
 const thread = $('thread');   // Q&A thread inside it (below the record)
 
+// POST a JSON body; returns the raw Response so callers keep their res.ok checks.
+const postJSON = (url, body) => fetch(url, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+
 // One place that knows how each memory category looks. Earthy, low-saturation, not a rainbow.
 const CATS = {
   insight:    { label: 'insight',    color: '#B8860B' },
@@ -376,10 +381,6 @@ const CATS = {
 };
 const CAT_ORDER = ['insight', 'skill', 'score', 'experience', 'red_flag', 'summary', 'note'];
 const cat = (c) => CATS[c] || CATS.note;
-
-function timeNow() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
 
 // A quiet 0..10 importance bar, reused on chips and in the drawer. Inherits text color.
 function impMeter(importance) {
@@ -568,11 +569,7 @@ async function createCandidate() {
   if (!name) return;
   const role = $('newRole').value.trim();
   try {
-    const c = await (await fetch('/candidates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, role }),
-    })).json();
+    const c = await (await postJSON('/candidates', { name, role })).json();
     $('newName').value = '';
     $('newRole').value = '';
     await loadCandidates();
@@ -730,20 +727,12 @@ async function send() {
   if (currentId === 'all') {
     try {
       if (cmpSelected.size >= 2) {
-        const res = await fetch('/compare', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ candidate_ids: [...cmpSelected], question: message }),
-        });
+        const res = await postJSON('/compare', { candidate_ids: [...cmpSelected], question: message });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         think.done();
         renderCompare(await res.json());
       } else {
-        const res = await fetch('/ask', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: message }),
-        });
+        const res = await postJSON('/ask', { question: message });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         think.done();
@@ -764,11 +753,7 @@ async function send() {
   }
 
   try {
-    const res = await fetch(`/candidates/${currentId}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, mode: askMode ? 'ask' : 'note' }),
-    });
+    const res = await postJSON(`/candidates/${currentId}/chat`, { message, mode: askMode ? 'ask' : 'note' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     think.done();
@@ -821,11 +806,7 @@ async function simulateTime() {
   const btn = $('simBtn');
   btn.disabled = true;
   try {
-    const res = await fetch(`/candidates/${currentId}/simulate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ days }),
-    });
+    const res = await postJSON(`/candidates/${currentId}/simulate`, { days });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const bits = [`${days} days passed, importance decayed`];
@@ -1090,11 +1071,7 @@ async function confirmConsent() {
   const btn = $('ivConfirmBtn');
   btn.disabled = true;
   try {
-    const r = await fetch(`/candidates/${currentId}/interviews`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ consent_confirmed: true }),
-    });
+    const r = await postJSON(`/candidates/${currentId}/interviews`, { consent_confirmed: true });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rec = await r.json();
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -1142,7 +1119,14 @@ function startCapture(id, stream) {
     `<div class="text-13 text-text-tertiary fw-450 italic">Listening… words appear a few seconds after they are spoken.</div>`;
   $('ivFacts').innerHTML =
     `<div id="ivFactsHint" class="text-13 text-text-tertiary fw-450 italic">Facts the memory engine extracts will slide in here.</div>`;
-  $('ivTimer').textContent = '00:00';
+  // Reset the header from the previous session's closing state.
+  $('ivStatus').innerHTML = `<span class="pulse-dot rec"></span> Recording
+    <span id="ivTimer" class="font-mono text-13 text-text-secondary fw-450">00:00</span>`;
+  const endBtn = $('ivEndBtn');
+  endBtn.disabled = false;
+  endBtn.classList.replace('bg-accent', 'bg-danger');
+  endBtn.innerHTML = `<i class="hgi-stroke hgi-stop text-14"></i> End interview`;
+  endBtn.onclick = endInterview;
   $('ivConsent').classList.add('hidden');
   $('ivLive').classList.remove('hidden');
 }
@@ -1240,11 +1224,7 @@ async function postChunk(sessionId, wavBlob) {
   box.scrollTop = box.scrollHeight;
   try {
     const audio_b64 = await blobToB64(wavBlob);
-    const r = await fetch(`/interviews/${sessionId}/audio`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audio_b64 }),
-    });
+    const r = await postJSON(`/interviews/${sessionId}/audio`, { audio_b64 });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     busy.remove();
@@ -1330,13 +1310,8 @@ async function endInterview() {
   btn.disabled = false;
   btn.classList.replace('bg-danger', 'bg-accent');
   btn.innerHTML = `<i class="hgi-stroke hgi-user text-14"></i> View record`;
-  btn.onclick = () => {
+  btn.onclick = () => {         // startCapture resets the header for the next session
     $('interviewPanel').classList.add('hidden');
-    btn.classList.replace('bg-accent', 'bg-danger');
-    btn.innerHTML = `<i class="hgi-stroke hgi-stop text-14"></i> End interview`;
-    btn.onclick = endInterview;
-    $('ivStatus').innerHTML = `<span class="pulse-dot rec"></span> Recording
-      <span id="ivTimer" class="font-mono text-13 text-text-secondary fw-450">00:00</span>`;
     renderRecord();   // the new memories and the transcript are now on the page
   };
 }

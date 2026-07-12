@@ -22,12 +22,11 @@ CHAT_MODEL = os.getenv("QWEN_CHAT_MODEL", "qwen-plus")
 EMBED_MODEL = os.getenv("QWEN_EMBED_MODEL", "text-embedding-v3")
 ASR_MODEL = os.getenv("QWEN_ASR_MODEL", "qwen3-asr-flash")
 
-# Speech-to-text lives on the same endpoint for intl keys (verified), but a
-# separate override exists in case a key only has ASR enabled elsewhere.
+# Speech-to-text lives on the same endpoint for intl keys (verified); a second
+# client is only built if QWEN_ASR_BASE_URL points ASR somewhere else.
 _asr_client = OpenAI(
-    api_key=os.getenv("QWEN_API_KEY"),
-    base_url=os.getenv("QWEN_ASR_BASE_URL") or os.getenv("QWEN_BASE_URL"),
-)
+    api_key=os.getenv("QWEN_API_KEY"), base_url=os.getenv("QWEN_ASR_BASE_URL")
+) if os.getenv("QWEN_ASR_BASE_URL") else _client
 
 
 def chat(messages, temperature=0.3):
