@@ -10,6 +10,10 @@ An AI hiring assistant that **remembers candidates across interview sessions.**
 
 Built for the **Global AI Hackathon Series with Qwen Cloud, Track 1: MemoryAgent.**
 
+**Live demo: https://47.237.178.111.sslip.io** (hosted on Alibaba Cloud ECS,
+Singapore; https so the live interview microphone works). Click "Load demo
+candidate" under Demo tools in the sidebar, or add your own.
+
 Interviewers at a jute mill (Jabbar Jute Mills) talk to candidates over multiple
 sessions. RecruitMemory quietly extracts durable facts from each conversation,
 recalls only the relevant ones later, lets old details fade, changes its mind
