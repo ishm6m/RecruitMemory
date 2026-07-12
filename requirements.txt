@@ -5,3 +5,4 @@ httpx==0.27.2  # openai 1.51 breaks with httpx>=0.28 (removed 'proxies' arg)
 numpy==2.1.1
 python-dotenv==1.2.2
 oss2==2.18.6
+pypdf==5.1.0  # resume upload: text extraction from PDF (pure python, no system deps)

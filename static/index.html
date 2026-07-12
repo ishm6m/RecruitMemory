@@ -254,6 +254,9 @@
         </div>
       </div>
 
+      <!-- resume/portfolio picker, triggered by the Upload button in the record -->
+      <input type="file" id="resumeFile" accept=".pdf,.txt" class="hidden" onchange="uploadResume(this)" />
+
       <!-- compose bar -->
       <div class="shrink-0 px-4 sm:px-6 pb-5 pt-2">
         <div class="max-w-measure mx-auto">
@@ -352,6 +355,16 @@
               </div>
               <!-- right: facts extracted in real time -->
               <div class="w-full md:w-[360px] min-h-0 flex flex-col shrink-0">
+                <!-- glanceable reference drafted from the resume (hidden when there is none) -->
+                <div id="ivQsWrap" class="hidden mb-3 shrink-0">
+                  <details class="group bg-surface border border-border rounded-xl px-3.5 py-2.5" open>
+                    <summary class="list-none cursor-pointer flex items-center gap-1.5 text-11 fw-650 uppercase track-wide text-text-tertiary">
+                      Suggested questions
+                      <i class="hgi-stroke hgi-arrow-down-01 text-12 ml-auto transition-transform group-open:rotate-180"></i>
+                    </summary>
+                    <ol id="ivQsList" class="mt-2 ml-4 list-decimal flex flex-col gap-1.5 text-13 fw-450 leading-relaxed max-h-44 overflow-y-auto"></ol>
+                  </details>
+                </div>
                 <div class="text-11 fw-650 uppercase track-wide text-text-tertiary mb-2">Memories forming</div>
                 <div id="ivFacts" class="flex-1 overflow-y-auto flex flex-col items-start gap-2"></div>
               </div>
@@ -367,6 +380,8 @@
 // The backend/API is unchanged. This file only restyles, re-lays-out, and surfaces
 // data (category, importance, consolidation) the API already returns.
 let currentId = null;
+let currentCand = null;   // the selected candidate's row (carries .questions)
+let lastResume = null;    // one-line summary of the most recent resume upload
 let sending = false;
 let askMode = true;   // composer mode: Ask (read-only) vs Note (writes to memory)
 let lastSim = null;   // one-line summary of the most recent "advance time" run
@@ -514,6 +529,7 @@ async function deleteCandidate(c) {
     cmpSelected.delete(c.id);
     if (currentId === c.id) {
       currentId = null;
+      currentCand = null;
       $('record').innerHTML = '';
       thread.innerHTML = '';
       $('hdrName').textContent = 'Select a candidate';
@@ -532,9 +548,11 @@ async function deleteCandidate(c) {
 function selectCandidate(c) {
   if (iv) return;   // don't switch candidates while an interview is recording
   currentId = c.id;
+  currentCand = c;
   $('interviewPanel').classList.add('hidden');
   lastSim = null;   // reset the time-machine banner for the new candidate
   lastReflect = null;   // reset the reflection banner for the new candidate
+  lastResume = null;    // reset the resume banner for the new candidate
   $('hdrName').textContent = c.name;
   $('hdrRole').textContent = c.role || '';
   $('recBtn').disabled = false;
@@ -555,6 +573,7 @@ function selectCandidate(c) {
 function selectAllCandidates() {
   if (iv) return;
   currentId = 'all';
+  currentCand = null;
   $('interviewPanel').classList.add('hidden');
   $('hdrName').textContent = 'All candidates';
   $('hdrRole').textContent = 'ask across every stored memory';
@@ -963,6 +982,46 @@ function renderCompare(d) {
   chat.scrollTop = chat.scrollHeight;
 }
 
+// ---- resume / portfolio pre-load ----
+// The file goes up as base64 JSON (same transport as audio chunks). The server
+// extracts the text, runs the SAME extraction pipeline (source=resume), then
+// drafts interview questions from everything memory now holds.
+async function uploadResume(input) {
+  const file = input.files && input.files[0];
+  input.value = '';   // allow re-picking the same file later
+  if (!file || !currentId || currentId === 'all' || iv) return;
+  const cid = currentId;
+  const btn = $('resumeBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="pulse-dot"></span> Reading ${esc(file.name)}… extracting facts and drafting questions`;
+  }
+  try {
+    const file_b64 = await blobToB64(file);
+    const r = await postJSON(`/candidates/${cid}/resume`, { file_b64, filename: file.name });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    if (currentId !== cid) return;   // user switched candidates mid-upload
+    currentCand.questions = d.questions || [];
+    const nf = d.new_facts.length, nq = currentCand.questions.length;
+    lastResume = `Read ${file.name}: ${nf} fact${nf === 1 ? '' : 's'} extracted into memory` +
+                 (nq ? ` · ${nq} interview questions drafted below` : '');
+    await renderRecord();
+  } catch (e) {
+    if (currentId !== cid) return;
+    await renderRecord();   // restore the upload button from its loading state
+    errorRow(/^HTTP|^Failed/.test(e.message)
+      ? "Couldn't upload that file. Is the server running?" : e.message);
+  }
+}
+
+// Quiet banner naming what the last resume upload produced.
+function resumeBanner() {
+  if (!lastResume) return '';
+  return `<div class="chip-in flex items-center gap-2 bg-accent-soft text-accent rounded-lg px-3 py-2 text-13 fw-450 mb-5">` +
+         `<i class="hgi-stroke hgi-file-01 text-14"></i> ${esc(lastResume)}</div>`;
+}
+
 // ---- the candidate record: what we remember + past interviews, as the page ----
 function fmtWhen(epoch) {
   return new Date(epoch * 1000).toLocaleString([], {
@@ -987,7 +1046,37 @@ async function renderRecord() {
   if (currentId !== cid) return;   // user switched away while we were fetching
 
   const box = $('record');
-  box.innerHTML = simBanner() + reflectBanner();
+  box.innerHTML = simBanner() + reflectBanner() + resumeBanner();
+
+  // -- interview prep: the optional-but-obvious first move when a resume exists --
+  const qs = (currentCand && currentCand.questions) || [];
+  const prep = document.createElement('div');
+  prep.className = 'mb-6';
+  prep.innerHTML =
+    `<div class="flex items-center gap-2.5 flex-wrap">` +
+      `<button id="resumeBtn" onclick="$('resumeFile').click()"` +
+        ` class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-13 fw-550` +
+        ` text-text-secondary hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-60">` +
+        `<i class="hgi-stroke hgi-file-01 text-14"></i> ${qs.length ? 'Upload another resume' : 'Upload resume / portfolio'}</button>` +
+      `<span class="text-12 text-text-tertiary fw-450">PDF or .txt · pre-loads memory and drafts tailored interview questions</span>` +
+    `</div>`;
+  box.appendChild(prep);
+
+  // -- suggested questions (drafted after a resume upload, kept on the record) --
+  if (qs.length) {
+    const qSec = document.createElement('div');
+    qSec.className = 'mb-6';
+    qSec.innerHTML =
+      `<div class="flex items-center gap-2 pb-1.5 mb-1 border-b border-hairline">` +
+        `<span class="text-11 fw-650 uppercase track-wide text-text-tertiary">Suggested questions</span>` +
+        `<span class="text-11 text-text-tertiary fw-550">${qs.length}</span>` +
+        `<span class="text-11 text-text-tertiary fw-450 ml-auto">a reference for the interview, not a script</span>` +
+      `</div>` +
+      `<ol class="list-decimal ml-5 mt-1.5 flex flex-col gap-1.5">` +
+      qs.map(q => `<li class="text-14 fw-450 leading-relaxed pl-1">${esc(q)}</li>`).join('') +
+      `</ol>`;
+    box.appendChild(qSec);
+  }
 
   // -- what we remember --
   const memSec = document.createElement('div');
@@ -1000,8 +1089,9 @@ async function renderRecord() {
   if (!mems.length) {
     memSec.insertAdjacentHTML('beforeend',
       `<div class="text-13 text-text-secondary fw-450 leading-relaxed py-2">` +
-      `Nothing remembered yet. Press <span class="fw-550 text-accent">Record interview</span> ` +
-      `to capture facts live, or switch the box below to Note and type one.</div>`);
+      `Nothing remembered yet. Upload their resume above to pre-load memory, press ` +
+      `<span class="fw-550 text-accent">Record interview</span> to capture facts live, ` +
+      `or switch the box below to Note and type one.</div>`);
   } else {
     const groups = {};
     for (const m of mems) (groups[m.category] || (groups[m.category] = [])).push(m);
@@ -1143,6 +1233,11 @@ function startCapture(id, stream) {
     `<div id="ivFactsHint" class="text-13 text-text-tertiary fw-450 italic">Facts the memory engine extracts will slide in here.</div>`;
   $('ivNote').value = '';
   $('ivNoteRow').classList.remove('hidden');
+  // Resume-drafted questions ride along as a glanceable reference.
+  const qs = (currentCand && currentCand.questions) || [];
+  $('ivQsWrap').classList.toggle('hidden', !qs.length);
+  $('ivQsList').innerHTML = qs.map(q =>
+    `<li class="text-13 fw-450 leading-relaxed text-text-secondary pl-0.5">${esc(q)}</li>`).join('');
   // Reset the header from the previous session's closing state.
   $('ivStatus').innerHTML = `<span class="pulse-dot rec"></span> Recording
     <span id="ivTimer" class="font-mono text-13 text-text-secondary fw-450">00:00</span>`;

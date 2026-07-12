@@ -48,6 +48,8 @@ def _fake_chat(messages, temperature=0.3):
         return json.dumps([{"insight": "Reliable and safety-conscious.", "importance": 8}])
     if "Does the NEW fact update" in system:
         return "NO"
+    if "interview questions" in system:
+        return json.dumps(["How did you maintain the looms?", "Describe a quality check you ran."])
     if "Compare the candidates" in system:
         return "Candidate comparison verdict."
     if "gathered across all candidates" in system:
@@ -251,6 +253,58 @@ def test_sources_distinguish_spoken_from_typed():
     assert sources["Sourced arrived 20 minutes late."] == "manual_note"
     # the memories endpoint exposes the source so the UI can label each fact
     assert all("source" in m for m in client.get(f"/candidates/{cid}/memories").json())
+
+
+# --- resume pre-load ------------------------------------------------------
+def _b64(data):
+    import base64
+    return base64.b64encode(data).decode()
+
+
+def test_resume_txt_preloads_memory_and_questions():
+    cid = client.post("/candidates", json={"name": "ResumeKarim"}).json()["id"]
+    text = "ResumeKarim maintained 40 power looms for 5 years at Adamjee and holds a safety certification."
+    r = client.post(f"/candidates/{cid}/resume",
+                    json={"file_b64": _b64(text.encode()), "filename": "karim.txt"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["new_facts"]) == 1              # same extraction pipeline
+    assert body["questions"]                        # tailored questions drafted
+    mems = db.get_active_memories(cid)
+    assert mems[0]["source"] == "resume"            # retrievable like any other memory
+    # questions persist on the candidate row so the UI has them after a reload
+    me = [c for c in client.get("/candidates").json() if c["id"] == cid][0]
+    assert me["questions"] == body["questions"]
+    # resume facts and interview facts coexist in the same store
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    _fake_transcripts.append("ResumeKarim answered the loom question well.")
+    client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"})
+    client.post(f"/interviews/{iid}/end")
+    sources = {m["source"] for m in db.get_active_memories(cid)}
+    assert {"resume", "live_transcript"} <= sources
+
+
+def test_resume_rejects_bad_files():
+    cid = client.post("/candidates", json={"name": "BadFile"}).json()["id"]
+    ok = {"file_b64": _b64(b"some resume text long enough to pass the emptiness check")}
+    assert client.post("/candidates/999999/resume",
+                       json={**ok, "filename": "x.txt"}).status_code == 404
+    assert client.post(f"/candidates/{cid}/resume",
+                       json={**ok, "filename": "x.docx"}).status_code == 400
+    assert client.post(f"/candidates/{cid}/resume",
+                       json={"file_b64": "!!not-base64!!", "filename": "x.txt"}).status_code == 400
+    # a PDF with no extractable text (e.g. a scan) is told apart, not stored silently
+    import io as _io
+    from pypdf import PdfWriter
+    buf = _io.BytesIO()
+    w = PdfWriter()
+    w.add_blank_page(width=200, height=200)
+    w.write(buf)
+    r = client.post(f"/candidates/{cid}/resume",
+                    json={"file_b64": _b64(buf.getvalue()), "filename": "scan.pdf"})
+    assert r.status_code == 422
+    assert db.count_active_memories(cid) == 0       # nothing junk was stored
 
 
 # --- cross-candidate ask ------------------------------------------------

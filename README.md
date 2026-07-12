@@ -96,6 +96,25 @@ which candidate each fact came from.
 
 > Note: browsers only allow microphone access on `localhost` or `https` pages.
 
+### Resume pre-load: memory starts before the interview does
+
+Before the interview, the recruiter can upload the candidate's **resume or
+portfolio** (PDF or plain text). The agent reads it, runs the text through the
+same extraction pipeline, stores each fact tagged `source: resume`, and drafts
+**5-8 interview questions anchored to what the document actually claims** (a
+resume that mentions loom maintenance gets a question probing depth on loom
+maintenance, not "tell me about yourself"). The questions sit on the
+candidate's record and ride along as a glanceable reference panel during the
+live recording. A typed note field also stays available *while* the mic is
+recording, for things a microphone cannot capture: the candidate arrived late,
+showed a physical certificate, a gut impression.
+
+The point for architecture quality: **memory can be seeded from multiple
+sources, resume, live interview, and manual notes, all flowing into the same
+retrieval and decay system.** Every memory carries its source, so "what do we
+know about Karim" draws on resume facts and interview facts together, and
+"where did this come from" has an honest answer.
+
 ---
 
 ## Does the memory actually work?
@@ -234,6 +253,8 @@ python backup.py restore  # pull the newest backup back down
 | `POST` | `/candidates/{id}/interviews` | Start a live interview (requires `{"consent_confirmed": true}`; logs the timestamp) |
 | `POST` | `/interviews/{id}/audio` | Transcribe a ~6s WAV chunk (`{"audio_b64"}`) and extract facts from it |
 | `POST` | `/interviews/{id}/end` | End the interview: flush, decay, reflect, return the transcript |
+| `POST` | `/candidates/{id}/notes` | Typed note (works mid-recording), extraction only, tagged `manual_note` |
+| `POST` | `/candidates/{id}/resume` | Pre-load memory from a resume (`{"file_b64", "filename"}`, PDF/.txt) and draft tailored questions |
 | `POST` | `/ask` | Ask a question across ALL candidates' memories (query-only) |
 
 ---

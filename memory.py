@@ -339,6 +339,31 @@ def reflect(candidate_id):
     return {"insights": stored, "from_facts": len(facts)}
 
 
+def suggest_questions(candidate_id):
+    """
+    5-8 interview questions (or one small practical task) tailored to what
+    memory holds about this candidate. Runs after a resume upload, so each
+    question can probe depth on something the document actually claims,
+    instead of generic "tell me about yourself" filler.
+    """
+    facts = db.get_active_memories(candidate_id)
+    if not facts:
+        return []
+    prompt = [
+        {"role": "system", "content": (
+            "You prepare an interviewer at Jabbar Jute Mills. From the facts "
+            "below about one candidate, write 5-8 interview questions (one may "
+            "be a small practical task) that probe DEPTH on this candidate's "
+            "specific background. Every question must anchor to something "
+            "concrete in the facts; no generic questions. Return ONLY a JSON "
+            "array of strings."
+        )},
+        {"role": "user", "content": _bullets(facts)},
+    ]
+    proposed = _parse_json_array(qwen.chat(prompt, temperature=0.4))
+    return [str(q).strip() for q in proposed if str(q).strip()][:8]
+
+
 def compare(candidate_ids, question):
     """
     Cross-candidate reasoning. For the same question, recall each candidate's

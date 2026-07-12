@@ -36,7 +36,8 @@ def init_db():
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL,
             role       TEXT,
-            created_at REAL NOT NULL
+            created_at REAL NOT NULL,
+            questions  TEXT NOT NULL DEFAULT '[]'  -- JSON array of suggested interview questions
         );
 
         CREATE TABLE IF NOT EXISTS memories (
@@ -69,6 +70,9 @@ def init_db():
     cols = [r[1] for r in _c.execute("PRAGMA table_info(memories)")]
     if "source" not in cols:
         _c.execute("ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT 'manual_note'")
+    cand_cols = [r[1] for r in _c.execute("PRAGMA table_info(candidates)")]
+    if "questions" not in cand_cols:
+        _c.execute("ALTER TABLE candidates ADD COLUMN questions TEXT NOT NULL DEFAULT '[]'")
     _c.commit()
 
 
@@ -80,17 +84,31 @@ def create_candidate(name, role=""):
         (name, role, time.time()),
     )
     _c.commit()
-    return {"id": cur.lastrowid, "name": name, "role": role}
+    return {"id": cur.lastrowid, "name": name, "role": role, "questions": []}
+
+
+def _cand(row):
+    """Row -> dict, with the questions JSON decoded to a real list."""
+    d = dict(row)
+    d["questions"] = json.loads(d.get("questions") or "[]")
+    return d
 
 
 def list_candidates():
     rows = _c.execute("SELECT * FROM candidates ORDER BY created_at DESC").fetchall()
-    return [dict(r) for r in rows]
+    return [_cand(r) for r in rows]
 
 
 def get_candidate(candidate_id):
     row = _c.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
-    return dict(row) if row else None
+    return _cand(row) if row else None
+
+
+def set_questions(candidate_id, questions):
+    """Store the suggested interview questions (a list of strings)."""
+    _c.execute("UPDATE candidates SET questions = ? WHERE id = ?",
+               (json.dumps(questions), candidate_id))
+    _c.commit()
 
 
 def delete_candidate(candidate_id):

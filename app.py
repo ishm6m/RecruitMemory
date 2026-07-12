@@ -16,12 +16,17 @@ Endpoints:
   POST   /candidates/{id}/interviews start a consent-gated live interview session
   POST   /interviews/{id}/audio      transcribe a ~6s audio chunk + extract facts
   POST   /interviews/{id}/end        finish the session (flush, decay, reflect)
+  POST   /candidates/{id}/notes      typed note (works mid-recording), extraction only
+  POST   /candidates/{id}/resume     pre-load memory from a resume/portfolio (PDF/.txt)
   POST   /ask                        query across ALL candidates' memories
 """
 
+import base64
+import io
 import re
 import time
 
+import pypdf
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -63,6 +68,11 @@ class NewInterview(BaseModel):
 
 class NoteIn(BaseModel):
     text: str
+
+
+class ResumeIn(BaseModel):
+    file_b64: str      # the whole file, base64 (same transport style as audio)
+    filename: str = ""
 
 
 class AudioIn(BaseModel):
@@ -238,6 +248,51 @@ def add_note(candidate_id: int, body: NoteIn):
     if not body.text.strip():
         raise HTTPException(400, "note text is required")
     return {"new_facts": memory.extract_and_store(candidate_id, body.text)}
+
+
+# Resume upload limits: a real resume is a few pages; these caps keep one
+# request from swallowing a book while never touching a legitimate file.
+RESUME_MAX_BYTES = 10 * 1024 * 1024
+RESUME_TEXT_CAP = 15000  # chars fed to extraction (several pages of text)
+
+
+@app.post("/candidates/{candidate_id}/resume")
+def upload_resume(candidate_id: int, body: ResumeIn):
+    """Pre-load memory from a resume/portfolio (PDF or .txt): extract text,
+    feed it through the SAME extraction pipeline as notes and interviews
+    (tagged source=resume), then draft tailored interview questions."""
+    if not db.get_candidate(candidate_id):
+        raise HTTPException(404, "candidate not found")
+    try:
+        raw = base64.b64decode(body.file_b64, validate=True)
+    except Exception:
+        raise HTTPException(400, "file_b64 is not valid base64")
+    if len(raw) > RESUME_MAX_BYTES:
+        raise HTTPException(400, "file too large (10 MB max)")
+
+    name = body.filename.lower()
+    if name.endswith(".pdf"):
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(raw))
+            text = "\n".join((page.extract_text() or "") for page in reader.pages)
+        except Exception:
+            raise HTTPException(400, "couldn't read that PDF; is the file intact?")
+    elif name.endswith(".txt"):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        raise HTTPException(400, "only .pdf or .txt files are supported")
+
+    text = text.strip()[:RESUME_TEXT_CAP]
+    if len(text) < 40:
+        raise HTTPException(
+            422, "no readable text in that file; a scanned or photographed "
+                 "resume needs OCR, which isn't supported, use a text PDF or .txt")
+
+    new_facts = memory.extract_and_store(candidate_id, text, source="resume")
+    questions = memory.suggest_questions(candidate_id)
+    if questions:
+        db.set_questions(candidate_id, questions)
+    return {"new_facts": new_facts, "questions": questions}
 
 
 @app.post("/ask")
