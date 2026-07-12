@@ -90,6 +90,11 @@
                          50%      { opacity: 1;  transform: scale(1); } }
     .pulse-dot { width: 7px; height: 7px; border-radius: 9999px; background: #0F6B5C;
                  display: inline-block; animation: breathe 1200ms ease-in-out infinite; }
+    /* Recording variant: bigger and red, the universal "live mic" signal. */
+    .pulse-dot.rec { width: 10px; height: 10px; background: #B4453A; }
+
+    /* While recording, everything outside the interview panel is visibly locked. */
+    .rec-lock { opacity: .45; pointer-events: none; }
 
     /* Category dot, small, low-saturation, used on chips + in the drawer. */
     .cat-dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; flex: none; }
@@ -100,14 +105,8 @@
     .imp-fill  { display: block; height: 100%; background: currentColor; border-radius: 9999px;
                  opacity: .55; transition: width .3s ease; }
 
-    /* Center every direct child of these scrollers into the reading column,
-       without touching the JS that appends into them. */
-    #chat > *, #memList > * { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
-
-    /* Memory drawer, mounted always so it can transition (no display:none). */
-    #memoryPanel { opacity: 0; transform: translateY(10px); pointer-events: none;
-                   transition: opacity .22s ease, transform .22s cubic-bezier(.2,.7,.2,1); }
-    #memoryPanel.open { opacity: 1; transform: none; pointer-events: auto; }
+    /* Center the record and the thread into the reading column. */
+    #chat > * { max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
 
     /* Off-canvas sidebar on small screens. */
     #navBackdrop { opacity: 0; pointer-events: none; transition: opacity .22s ease; }
@@ -123,9 +122,8 @@
       outline: 2px solid #0F6B5C; outline-offset: 2px; border-radius: 8px;
     }
     /* Quiet, thin scrollbars so the surfaces stay calm. */
-    #chat::-webkit-scrollbar, #candList::-webkit-scrollbar, #memList::-webkit-scrollbar { width: 10px; }
-    #chat::-webkit-scrollbar-thumb, #candList::-webkit-scrollbar-thumb,
-    #memList::-webkit-scrollbar-thumb { background: #E4E2DE; border-radius: 9999px;
+    #chat::-webkit-scrollbar, #candList::-webkit-scrollbar { width: 10px; }
+    #chat::-webkit-scrollbar-thumb, #candList::-webkit-scrollbar-thumb { background: #E4E2DE; border-radius: 9999px;
       border: 3px solid transparent; background-clip: content-box; }
     #chat:hover::-webkit-scrollbar-thumb { background: #D8D6D1; background-clip: content-box; }
   </style>
@@ -167,26 +165,47 @@
                        hover:bg-accent-hover active:scale-[.985] transition-all duration-150">
           <i class="hgi-stroke hgi-add-01 text-16"></i> Add candidate
         </button>
-        <!-- One-click demo candidate (Salma), the Compare partner in DEMO.md. -->
-        <button onclick="seedDemo()"
-                class="inline-flex items-center justify-center gap-1.5 text-12 fw-450 text-text-secondary
-                       hover:text-accent transition-colors">
-          <i class="hgi-stroke hgi-magic-wand-01 text-14"></i> Load demo candidate
-        </button>
       </div>
 
-      <div class="px-4 pt-2 pb-1.5 flex items-center justify-between">
+      <div class="px-4 pt-2 pb-1.5">
         <span class="text-11 text-text-tertiary fw-650 uppercase track-wide">Candidates</span>
-        <!-- Cross-candidate reasoning: recall two candidates' memories and weigh them. -->
-        <button onclick="openCompare()"
-                class="inline-flex items-center gap-1 text-11 fw-650 uppercase track-wide text-text-tertiary
-                       hover:text-accent transition-colors">
-          <i class="hgi-stroke hgi-arrow-data-transfer-horizontal text-13"></i> Compare
-        </button>
       </div>
 
       <!-- candidate list -->
-      <div id="candList" class="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-0.5"></div>
+      <div id="candList" class="flex-1 overflow-y-auto px-2 pb-2 flex flex-col gap-0.5"></div>
+
+      <!-- Presenter/judge tools live here, out of the product's way. -->
+      <details class="px-3 pb-3 border-t border-hairline pt-2">
+        <summary class="list-none cursor-pointer inline-flex items-center gap-1.5 text-11 fw-650 uppercase track-wide
+                        text-text-tertiary hover:text-text-secondary transition-colors px-1 py-1">
+          <i class="hgi-stroke hgi-magic-wand-01 text-13"></i> Demo tools
+        </summary>
+        <div class="flex flex-col gap-1.5 mt-1.5 px-1">
+          <button onclick="seedDemo()"
+                  class="inline-flex items-center gap-1.5 text-12 fw-450 text-text-secondary hover:text-accent transition-colors">
+            <i class="hgi-stroke hgi-user-add-01 text-14"></i> Load demo candidate
+          </button>
+          <button id="reflectBtn" onclick="reflect()"
+                  title="Synthesize higher-order insights from the selected candidate's facts"
+                  class="inline-flex items-center gap-1.5 text-12 fw-450 text-text-secondary hover:text-accent transition-colors">
+            <i class="hgi-stroke hgi-idea-01 text-14"></i> Synthesize insights
+          </button>
+          <div class="flex items-center gap-1.5">
+            <button id="simBtn" onclick="simulateTime()"
+                    title="Fast-forward the selected candidate's memory clock to watch decay"
+                    class="inline-flex items-center gap-1.5 text-12 fw-450 text-text-secondary hover:text-accent transition-colors">
+              <i class="hgi-stroke hgi-time-quarter-pass text-14"></i> Advance time
+            </button>
+            <select id="simDays" aria-label="How much time to advance"
+                    class="bg-surface border border-border rounded-md px-1.5 py-1 text-11 fw-450 text-text-secondary
+                           focus:outline-none focus:border-accent cursor-pointer">
+              <option value="14">+2 weeks</option>
+              <option value="30">+1 month</option>
+              <option value="90">+3 months</option>
+            </select>
+          </div>
+        </div>
+      </details>
     </aside>
 
     <!-- ============ MAIN ============ -->
@@ -201,16 +220,21 @@
           <div id="hdrName" class="text-16 sm:text-21 fw-650 track-tight leading-tight truncate">Select a candidate</div>
           <div id="hdrRole" class="text-12 text-text-secondary fw-450 truncate"></div>
         </div>
-        <button id="memBtn" onclick="toggleMemories()"
-                class="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary fw-550 rounded-lg
-                       px-2.5 sm:px-3 py-1.5 text-13 hover:bg-sidebar transition-colors shrink-0">
-          <i class="hgi-stroke hgi-all-bookmark text-16"></i>
-          <span id="memBtnLabel" class="hidden sm:inline">Stored memories</span>
+        <!-- Primary action: consent-gated live interview capture. -->
+        <button id="recBtn" onclick="openInterview()" disabled
+                class="inline-flex items-center gap-1.5 bg-accent text-white fw-550 rounded-lg
+                       px-2.5 sm:px-3 py-1.5 text-13 hover:bg-accent-hover active:scale-[.97]
+                       transition-all duration-150 shrink-0 disabled:opacity-40 disabled:pointer-events-none">
+          <i class="hgi-stroke hgi-mic-01 text-16"></i>
+          <span class="hidden sm:inline">Record interview</span>
         </button>
       </header>
 
-      <!-- conversation -->
-      <div id="chat" class="flex-1 overflow-y-auto px-4 sm:px-6 py-8 flex flex-col gap-7"></div>
+      <!-- the candidate record (memories + interviews) with the Q&A thread below it -->
+      <div id="chat" class="flex-1 overflow-y-auto px-4 sm:px-6 py-8 flex flex-col gap-7">
+        <div id="record" class="w-full"></div>
+        <div id="thread" class="w-full flex flex-col gap-7"></div>
+      </div>
 
       <!-- empty state -->
       <div id="empty" class="absolute inset-0 top-16 flex items-center justify-center pointer-events-none px-6">
@@ -220,9 +244,12 @@
           </span>
           <div class="text-15 fw-550 text-text-primary">A hiring memory that stays</div>
           <div class="text-13 text-text-secondary fw-450 mt-1 leading-relaxed">
-            RecruitMemory remembers each candidate across sessions. It recalls,
-            forgets what goes stale, and changes its mind when you correct it.
-            Pick someone from the list, or add a candidate to begin.
+            RecruitMemory listens to the interview and remembers each candidate
+            across sessions. It recalls, forgets what goes stale, and changes
+            its mind when you correct it.
+          </div>
+          <div class="text-13 fw-550 text-accent mt-3">
+            Add or pick a candidate on the left to get started.
           </div>
         </div>
       </div>
@@ -232,91 +259,89 @@
         <div class="max-w-measure mx-auto">
           <div class="flex items-end gap-2 bg-surface border border-border rounded-xl shadow-compose px-2 py-1.5
                       focus-within:border-accent/60 transition-colors">
-            <textarea id="message" rows="1" placeholder="Say something about this candidate…"
+            <!-- Explicit mode switch: asking never writes to memory, notes always do. -->
+            <div id="modeToggle" class="flex items-center gap-0.5 bg-sidebar rounded-lg p-0.5 mb-1 shrink-0">
+              <button id="modeAsk" onclick="setMode(true)"
+                      class="px-2.5 py-1 rounded-md text-12 fw-550 transition-colors">Ask</button>
+              <button id="modeNote" onclick="setMode(false)"
+                      class="px-2.5 py-1 rounded-md text-12 fw-550 transition-colors">Note</button>
+            </div>
+            <textarea id="message" rows="1" placeholder="Pick a candidate first…" disabled
                       oninput="autoGrow(this)"
                       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send();}"
                       class="flex-1 bg-transparent px-2.5 py-2 text-15 leading-relaxed placeholder:text-text-tertiary
                              focus:outline-none resize-none max-h-40 disabled:opacity-50"></textarea>
-            <button id="sendBtn" onclick="send()" aria-label="Send"
+            <button id="sendBtn" onclick="send()" aria-label="Send" disabled
                     class="inline-flex items-center justify-center bg-accent text-white rounded-lg w-9 h-9 mb-0.5
-                           hover:bg-accent-hover active:scale-[.94] transition-all duration-150 shrink-0">
+                           hover:bg-accent-hover active:scale-[.94] transition-all duration-150 shrink-0
+                           disabled:opacity-40 disabled:pointer-events-none">
               <i class="hgi-stroke hgi-sent text-16"></i>
             </button>
           </div>
           <div class="text-11 text-text-tertiary fw-450 text-center mt-2 hidden sm:block">
-            Enter to send · Shift+Enter for a new line · Decision-support only, a human makes the hiring call
+            Ask answers from memory only · Note teaches it something new · Decision-support only, a human makes the hiring call
           </div>
         </div>
       </div>
 
-      <!-- stored-memories drawer (slides over the chat) -->
-      <div id="memoryPanel" class="absolute inset-0 top-16 bg-bg flex flex-col">
-        <div class="h-14 shrink-0 border-b border-border px-4 sm:px-6 flex items-center justify-between">
-          <div class="max-w-measure mx-auto w-full flex items-center justify-between">
-            <div class="flex items-center gap-2 text-15 fw-650 track-tight">
-              <i class="hgi-stroke hgi-all-bookmark text-16 text-accent"></i> Stored memories
-            </div>
-            <div class="flex items-center gap-1.5">
-              <!-- Time machine: watch decay/consolidation happen live (mechanism 3). -->
-              <select id="simDays" aria-label="How much time to advance"
-                      class="bg-surface border border-border rounded-lg pl-2.5 pr-1.5 py-1.5 text-12 fw-450 text-text-secondary
-                             focus:outline-none focus:border-accent cursor-pointer">
-                <option value="14">+2 weeks</option>
-                <option value="30">+1 month</option>
-                <option value="90">+3 months</option>
-              </select>
-              <button id="reflectBtn" onclick="reflect()"
-                      title="Synthesize higher-order insights from the raw facts"
-                      class="inline-flex items-center gap-1.5 bg-accent-soft text-accent fw-550 rounded-lg px-2.5 py-1.5 text-12
-                             hover:bg-accent/15 active:scale-[.97] transition-all duration-150 disabled:opacity-50">
-                <i class="hgi-stroke hgi-idea-01 text-14"></i> Synthesize insights
-              </button>
-              <button id="simBtn" onclick="simulateTime()"
-                      class="inline-flex items-center gap-1.5 bg-accent-soft text-accent fw-550 rounded-lg px-2.5 py-1.5 text-12
-                             hover:bg-accent/15 active:scale-[.97] transition-all duration-150 disabled:opacity-50">
-                <i class="hgi-stroke hgi-time-quarter-pass text-14"></i> Advance time
-              </button>
-              <button onclick="toggleMemories()" aria-label="Close memories"
-                      class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:bg-sidebar transition-colors">
-                <i class="hgi-stroke hgi-cancel-01 text-16"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-        <div id="memList" class="flex-1 overflow-y-auto px-4 sm:px-6 py-5"></div>
-      </div>
+      <!-- live interview overlay (consent gate, then live transcript + facts) -->
+      <div id="interviewPanel" class="absolute inset-0 top-16 bg-bg flex flex-col hidden">
 
-      <!-- compare-candidates overlay (slides over the chat) -->
-      <div id="comparePanel" class="absolute inset-0 top-16 bg-bg flex flex-col hidden">
-        <div class="h-14 shrink-0 border-b border-border px-4 sm:px-6 flex items-center">
-          <div class="max-w-[860px] mx-auto w-full flex items-center justify-between">
-            <div class="flex items-center gap-2 text-15 fw-650 track-tight">
-              <i class="hgi-stroke hgi-arrow-data-transfer-horizontal text-16 text-accent"></i> Compare candidates
+        <!-- state 1: consent gate. The mic does NOT start until this is confirmed. -->
+        <div id="ivConsent" class="flex-1 flex items-center justify-center px-6">
+          <div class="text-center max-w-[400px] bg-surface border border-border rounded-2xl p-8">
+            <span class="w-12 h-12 rounded-2xl bg-accent-soft flex items-center justify-center mx-auto mb-3">
+              <i class="hgi-stroke hgi-mic-01 text-21 text-accent"></i>
+            </span>
+            <div class="text-15 fw-650 track-tight">Recording will begin for <span id="ivConsentName"></span></div>
+            <div class="text-13 text-text-secondary fw-450 mt-1.5 leading-relaxed">
+              Confirm <span id="ivConsentName2">the candidate</span> has been informed that this interview is
+              recorded and transcribed. The confirmation time is logged with the
+              interview record.
             </div>
-            <button onclick="closeCompare()" aria-label="Close comparison"
-                    class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:bg-sidebar transition-colors">
-              <i class="hgi-stroke hgi-cancel-01 text-16"></i>
-            </button>
-          </div>
-        </div>
-        <div class="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
-          <div class="max-w-[860px] mx-auto">
-            <div class="text-13 text-text-secondary fw-450 mb-2.5">Pick two or more candidates, then ask a question.</div>
-            <div id="cmpPicks" class="flex flex-wrap gap-2 mb-3"></div>
-            <div class="flex items-end gap-2 bg-surface border border-border rounded-xl shadow-compose px-2 py-1.5
-                        focus-within:border-accent/60 transition-colors">
-              <textarea id="cmpQ" rows="1" placeholder="e.g. Who is the better fit for a senior loom role?"
-                        oninput="autoGrow(this)"
-                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();runCompare();}"
-                        class="flex-1 bg-transparent px-2.5 py-2 text-15 leading-relaxed placeholder:text-text-tertiary
-                               focus:outline-none resize-none max-h-40"></textarea>
-              <button id="cmpBtn" onclick="runCompare()"
-                      class="inline-flex items-center justify-center gap-1.5 bg-accent text-white fw-550 rounded-lg px-3.5 h-9 mb-0.5 text-14
-                             hover:bg-accent-hover active:scale-[.97] transition-all duration-150 shrink-0 disabled:opacity-50">
-                Compare
+            <div id="ivConsentErr" class="text-13 text-danger fw-450 mt-3 hidden"></div>
+            <div class="flex items-center justify-center gap-2 mt-5">
+              <button onclick="cancelInterview()"
+                      class="inline-flex items-center justify-center fw-550 rounded-lg px-3.5 py-2 text-14
+                             text-text-secondary hover:bg-sidebar transition-colors">Cancel</button>
+              <button id="ivConfirmBtn" onclick="confirmConsent()"
+                      class="inline-flex items-center justify-center gap-1.5 bg-accent text-white fw-550 rounded-lg px-3.5 py-2 text-14
+                             hover:bg-accent-hover active:scale-[.97] transition-all duration-150 disabled:opacity-50">
+                <i class="hgi-stroke hgi-checkmark-circle-02 text-16"></i> Confirm &amp; start recording
               </button>
             </div>
-            <div id="cmpResult" class="mt-6"></div>
+          </div>
+        </div>
+
+        <!-- state 2: interview in progress -->
+        <div id="ivLive" class="flex-1 flex flex-col overflow-hidden hidden">
+          <div class="h-14 shrink-0 border-b border-border px-4 sm:px-6 flex items-center">
+            <div class="max-w-[1000px] mx-auto w-full flex items-center justify-between">
+              <div id="ivStatus" class="flex items-center gap-2.5 text-15 fw-650 track-tight">
+                <span class="pulse-dot rec"></span> Recording
+                <span id="ivTimer" class="font-mono text-13 text-text-secondary fw-450">00:00</span>
+              </div>
+              <button id="ivEndBtn" onclick="endInterview()"
+                      class="inline-flex items-center gap-1.5 bg-danger text-white fw-550 rounded-lg px-3 py-1.5 text-13
+                             hover:opacity-90 active:scale-[.97] transition-all duration-150 disabled:opacity-50">
+                <i class="hgi-stroke hgi-stop text-14"></i> End interview
+              </button>
+            </div>
+          </div>
+          <div class="flex-1 min-h-0 px-4 sm:px-6 py-5">
+            <div class="max-w-[1000px] mx-auto h-full flex flex-col md:flex-row gap-5">
+              <!-- left: scrolling live transcript -->
+              <div class="flex-1 min-h-0 flex flex-col">
+                <div class="text-11 fw-650 uppercase track-wide text-text-tertiary mb-2">Live transcript</div>
+                <div id="ivTranscript" class="flex-1 overflow-y-auto bg-surface border border-border rounded-xl p-4
+                                              flex flex-col gap-2.5 text-14 leading-relaxed"></div>
+              </div>
+              <!-- right: facts extracted in real time -->
+              <div class="w-full md:w-[360px] min-h-0 flex flex-col shrink-0">
+                <div class="text-11 fw-650 uppercase track-wide text-text-tertiary mb-2">Memories forming</div>
+                <div id="ivFacts" class="flex-1 overflow-y-auto flex flex-col items-start gap-2"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -329,13 +354,15 @@
 // data (category, importance, consolidation) the API already returns.
 let currentId = null;
 let sending = false;
+let askMode = true;   // composer mode: Ask (read-only) vs Note (writes to memory)
 let lastSim = null;   // one-line summary of the most recent "advance time" run
 let lastReflect = null;   // one-line summary of the most recent "synthesize insights" run
 let allCandidates = [];        // cached list, reused by the compare picker
 const cmpSelected = new Set();  // candidate ids currently ticked for comparison
 
 const $ = (id) => document.getElementById(id);
-const chat = $('chat');
+const chat = $('chat');       // the scroller
+const thread = $('thread');   // Q&A thread inside it (below the record)
 
 // One place that knows how each memory category looks. Earthy, low-saturation, not a rainbow.
 const CATS = {
@@ -367,6 +394,7 @@ function autoGrow(el) {
 }
 
 // Lock/unlock the composer while a request is in flight (prevents double-send).
+// Also the "no candidate selected" state: everything stays visibly disabled.
 function setComposer(enabled) {
   sending = !enabled;
   $('message').disabled = !enabled;
@@ -374,6 +402,20 @@ function setComposer(enabled) {
   btn.disabled = !enabled;
   btn.classList.toggle('opacity-40', !enabled);
   btn.classList.toggle('cursor-not-allowed', !enabled);
+}
+
+// Ask never writes to memory; Note always does. The recruiter picks, not the model.
+function setMode(ask) {
+  askMode = ask;
+  const base = 'px-2.5 py-1 rounded-md text-12 fw-550 transition-colors ';
+  const on = 'bg-surface text-text-primary shadow-drawer';
+  const off = 'text-text-secondary hover:text-text-primary';
+  $('modeAsk').className = base + (ask ? on : off);
+  $('modeNote').className = base + (!ask ? on : off);
+  if (!currentId || currentId === 'all') return;   // those states keep their own placeholder
+  $('message').placeholder = ask
+    ? 'Ask about this candidate… (asking stores nothing)'
+    : 'Type a note to remember about this candidate…';
 }
 
 // ---- responsive off-canvas sidebar ----
@@ -392,6 +434,20 @@ async function loadCandidates() {
       `No candidates yet. Add one above to start building their memory.</div>`;
     return;
   }
+  // Pinned scope switch: ask questions across EVERY candidate's memories.
+  const allActive = currentId === 'all';
+  const allRow = document.createElement('button');
+  allRow.onclick = selectAllCandidates;
+  allRow.className =
+    'w-full text-left rounded-lg pl-2.5 pr-2.5 py-2 flex items-center gap-2.5 transition-colors duration-150 mb-1 ' +
+    (allActive ? 'bg-accent-soft text-accent fw-550' : 'text-text-primary hover:bg-surface fw-450');
+  allRow.innerHTML =
+    `<span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${allActive ? 'bg-accent text-white' : 'bg-surface border border-border text-text-secondary'}">` +
+      `<i class="hgi-stroke hgi-user-multiple text-14"></i></span>` +
+    `<span class="min-w-0"><span class="block text-14 leading-tight truncate">All candidates</span>` +
+    `<span class="block text-12 leading-tight mt-0.5 ${allActive ? 'text-accent/80' : 'text-text-secondary'} truncate">ask across everyone</span></span>`;
+  box.appendChild(allRow);
+
   for (const c of list) {
     const active = c.id === currentId;
     // Row wraps the (full-width) select button plus a hover-reveal delete button,
@@ -436,30 +492,60 @@ async function deleteCandidate(c) {
     cmpSelected.delete(c.id);
     if (currentId === c.id) {
       currentId = null;
-      chat.innerHTML = '';
+      $('record').innerHTML = '';
+      thread.innerHTML = '';
       $('hdrName').textContent = 'Select a candidate';
       $('hdrRole').textContent = '';
+      $('recBtn').disabled = true;
+      setComposer(false);
       $('empty').classList.remove('hidden');
-      if ($('memoryPanel').classList.contains('open')) toggleMemories();
     }
     await loadCandidates();
+    if (currentId === 'all') renderAllHome();   // refresh the compare picker
   } catch (e) {
     errorRow("Couldn't delete that candidate. Is the server running?");
   }
 }
 
 function selectCandidate(c) {
+  if (iv) return;   // don't switch candidates while an interview is recording
   currentId = c.id;
+  $('interviewPanel').classList.add('hidden');
   lastSim = null;   // reset the time-machine banner for the new candidate
   lastReflect = null;   // reset the reflection banner for the new candidate
   $('hdrName').textContent = c.name;
   $('hdrRole').textContent = c.role || '';
+  $('recBtn').disabled = false;
   $('empty').classList.add('hidden');
-  chat.innerHTML = '';
-  if ($('memoryPanel').classList.contains('open')) toggleMemories(); // close drawer on switch
-  closeCompare();   // close compare overlay if it was open
+  thread.innerHTML = '';
+  renderRecord();       // the candidate's record IS the page, not a drawer
+  setComposer(true);
+  $('modeToggle').classList.remove('hidden');
+  setMode(true);
   closeNav();       // collapse mobile sidebar after choosing
   loadCandidates(); // re-render sidebar highlight
+  $('message').focus();
+}
+
+// Scope the composer to EVERY candidate: questions go to /ask (or /compare when
+// two or more candidates are ticked). Query-only, so recording is disabled and
+// the Note mode is hidden (notes belong to one candidate).
+function selectAllCandidates() {
+  if (iv) return;
+  currentId = 'all';
+  $('interviewPanel').classList.add('hidden');
+  $('hdrName').textContent = 'All candidates';
+  $('hdrRole').textContent = 'ask across every stored memory';
+  $('recBtn').disabled = true;
+  $('empty').classList.add('hidden');
+  thread.innerHTML = '';
+  renderAllHome();
+  setComposer(true);
+  setMode(true);
+  $('modeToggle').classList.add('hidden');
+  $('message').placeholder = 'e.g. Which candidates scored best on communication?';
+  closeNav();
+  loadCandidates();
   $('message').focus();
 }
 
@@ -513,7 +599,7 @@ function bubble(who, text) {
   body.textContent = text;
   wrap.appendChild(label);
   wrap.appendChild(body);
-  chat.appendChild(wrap);
+  thread.appendChild(wrap);
   chat.scrollTop = chat.scrollHeight;
   return wrap;
 }
@@ -522,14 +608,14 @@ function bubble(who, text) {
 // server-side and returns them in ONE response, so this steps through the phase
 // labels on a client timer, a faithful view of the real sequence, not a fake.
 // ponytail: client-timed phase cascade; swap to SSE/streaming for true per-step timing.
-function thinkingRow() {
-  const phases = ['Recalling memories', 'Thinking', 'Learning'];
+function thinkingRow(phases) {
+  phases = phases || ['Recalling memories', 'Thinking', 'Learning'];
   const row = document.createElement('div');
   row.className = 'msg-in flex items-center gap-2.5 px-0.5 text-13 text-text-secondary fw-450';
   const dot = document.createElement('span'); dot.className = 'pulse-dot';
   const label = document.createElement('span'); label.className = 'label-swap'; label.textContent = phases[0];
   row.appendChild(dot); row.appendChild(label);
-  chat.appendChild(row);
+  thread.appendChild(row);
   chat.scrollTop = chat.scrollHeight;
 
   let i = 0;
@@ -576,7 +662,7 @@ function recalledNote(facts, total) {
         `<span class="cat-dot mt-1.5 shrink-0" style="background:#0F6B5C"></span><span>${esc(f)}</span></li>`
       ).join('') +
     `</ul>`;
-  chat.appendChild(d);
+  thread.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
 }
 
@@ -587,7 +673,7 @@ function consolidationNote(n) {
   d.innerHTML =
     `<span class="cat-dot" style="background:${CATS.summary.color}"></span>` +
     `Consolidated ${n} ${n === 1 ? 'memory' : 'memories'} into a summary`;
-  chat.appendChild(d);
+  thread.appendChild(d);
 }
 
 // inline, quiet error row, never fail silently
@@ -595,7 +681,7 @@ function errorRow(msg) {
   const d = document.createElement('div');
   d.className = 'text-13 text-danger fw-450 px-0.5 flex items-center gap-2';
   d.innerHTML = `<i class="hgi-stroke hgi-alert-02 text-14"></i> ${esc(msg)}`;
-  chat.appendChild(d);
+  thread.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
 }
 
@@ -623,7 +709,7 @@ function updateNote(oldFact, newFact) {
   d.innerHTML =
     `<span class="cat-dot mt-1.5" style="background:#0F6B5C"></span>` +
     `<span>Updated belief: <span class="line-through opacity-60">${esc(oldFact)}</span> &rarr; ${esc(newFact)}</span>`;
-  chat.appendChild(d);
+  thread.appendChild(d);
 }
 
 async function send() {
@@ -636,13 +722,52 @@ async function send() {
   bubble('you', message);
 
   setComposer(false);
-  const think = thinkingRow();
+  const think = thinkingRow(askMode || currentId === 'all'
+    ? ['Recalling memories', 'Thinking'] : ['Recalling memories', 'Thinking', 'Learning']);
+
+  // "All candidates" scope: query-only. Two or more ticked candidates means a
+  // side-by-side comparison; otherwise the question searches everyone.
+  if (currentId === 'all') {
+    try {
+      if (cmpSelected.size >= 2) {
+        const res = await fetch('/compare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ candidate_ids: [...cmpSelected], question: message }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        think.done();
+        renderCompare(await res.json());
+      } else {
+        const res = await fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: message }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        think.done();
+        if (data.recalled && data.recalled.length) {
+          recalledNote(data.recalled.map(m => `${m.candidate}: ${m.fact}`));
+        }
+        bubble('agent', data.reply);
+      }
+    } catch (e) {
+      think.remove();
+      errorRow('Something went wrong reaching the assistant. Please try again.');
+    } finally {
+      setComposer(true);
+      $('message').focus();
+      chat.scrollTop = chat.scrollHeight;
+    }
+    return;
+  }
 
   try {
     const res = await fetch(`/candidates/${currentId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, mode: askMode ? 'ask' : 'note' }),
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -657,7 +782,7 @@ async function send() {
       data.new_facts.forEach(f => { if (f.replaces) updateNote(f.replaces, f.fact); });
       const row = document.createElement('div');
       row.className = 'flex flex-wrap gap-2 px-0.5';
-      chat.appendChild(row);
+      thread.appendChild(row);
       // stagger slightly so multiple chips cascade in
       data.new_facts.forEach((f, i) => {
         setTimeout(() => { row.appendChild(memoryChip(f)); chat.scrollTop = chat.scrollHeight; }, i * 90);
@@ -671,9 +796,11 @@ async function send() {
 
     // Mechanism 4, automatic: the agent formed a higher-order insight on its own
     // this turn (no button). Understanding deepening over the conversation.
-    if (data.reflected && data.reflected.length) {
-      insightNote(data.reflected);
-      if ($('memoryPanel').classList.contains('open')) loadMemories();
+    if (data.reflected && data.reflected.length) insightNote(data.reflected);
+
+    // The record above the thread reflects what was just learned.
+    if ((data.new_facts && data.new_facts.length) || (data.reflected && data.reflected.length)) {
+      renderRecord();
     }
   } catch (e) {
     think.remove();
@@ -686,24 +813,10 @@ async function send() {
 }
 
 // ---- stored-memories drawer ----
-async function toggleMemories() {
-  const panel = $('memoryPanel');
-  const open = panel.classList.contains('open');
-  if (!open) {
-    if (!currentId) return;
-    await loadMemories();
-    panel.classList.add('open');
-    $('memBtnLabel').textContent = 'Hide memories';
-  } else {
-    panel.classList.remove('open');
-    $('memBtnLabel').textContent = 'Stored memories';
-  }
-}
-
 // Fast-forward this candidate's memory clock: the server ages the memories and
 // runs the REAL decay + consolidation, then we re-render so forgetting is visible.
 async function simulateTime() {
-  if (!currentId) return;
+  if (!currentId || currentId === 'all' || iv) return;
   const days = Number($('simDays').value) || 14;
   const btn = $('simBtn');
   btn.disabled = true;
@@ -719,12 +832,10 @@ async function simulateTime() {
     if (d.archived) bits.push(`${d.archived} ${d.archived === 1 ? 'memory' : 'memories'} faded away`);
     if (d.consolidated) bits.push(`${d.consolidated} consolidated into a summary`);
     lastSim = bits.join(' · ');
-    await loadMemories();
+    await renderRecord();
   } catch (e) {
     lastSim = null;
-    $('memList').insertAdjacentHTML('afterbegin',
-      `<div class="text-13 text-danger fw-450 mb-4 flex items-center gap-2">` +
-      `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn't advance time. Is the server running?</div>`);
+    errorRow("Couldn't advance time. Is the server running?");
   } finally {
     btn.disabled = false;
   }
@@ -742,7 +853,7 @@ function simBanner() {
 // "insight" section AND start influencing retrieval, so the agent forms opinions
 // it was never explicitly told.
 async function reflect() {
-  if (!currentId) return;
+  if (!currentId || currentId === 'all' || iv) return;
   const btn = $('reflectBtn');
   btn.disabled = true;
   try {
@@ -754,12 +865,10 @@ async function reflect() {
       ? `Synthesized ${ins.length} insight${ins.length === 1 ? '' : 's'} from ${d.from_facts} facts: `
         + ins.map(i => i.insight).join(' · ')
       : (d.reason || 'No new insight to add yet');
-    await loadMemories();
+    await renderRecord();
   } catch (e) {
     lastReflect = null;
-    $('memList').insertAdjacentHTML('afterbegin',
-      `<div class="text-13 text-danger fw-450 mb-4 flex items-center gap-2">` +
-      `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn't synthesize insights. Is the server running?</div>`);
+    errorRow("Couldn't synthesize insights. Is the server running?");
   } finally {
     btn.disabled = false;
   }
@@ -774,7 +883,7 @@ function insightNote(insights) {
   d.innerHTML = `<i class="hgi-stroke hgi-idea-01 text-14 mt-0.5 shrink-0"></i>` +
     `<span><span class="fw-550">Formed a new insight:</span> ` +
     insights.map(i => esc(i.insight)).join(' · ') + `</span>`;
-  chat.appendChild(d);
+  thread.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
 }
 
@@ -786,14 +895,7 @@ function reflectBanner() {
          `<i class="hgi-stroke hgi-idea-01 text-14 mt-0.5 shrink-0"></i> <span>${esc(lastReflect)}</span></div>`;
 }
 
-// ---- compare candidates (cross-candidate reasoning) ----
-function openCompare() {
-  if ($('memoryPanel').classList.contains('open')) toggleMemories(); // don't stack overlays
-  $('comparePanel').classList.remove('hidden');
-  renderCmpPicks();
-}
-function closeCompare() { $('comparePanel').classList.add('hidden'); }
-
+// ---- compare candidates (lives on the All candidates screen) ----
 function toggleCmpPick(id) {
   cmpSelected.has(id) ? cmpSelected.delete(id) : cmpSelected.add(id);
   renderCmpPicks();
@@ -810,38 +912,24 @@ function renderCmpPicks() {
     return `<button onclick="toggleCmpPick(${c.id})" class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-13 fw-450 transition-colors ` +
       (on ? 'bg-accent-soft border-accent/40 text-accent' : 'bg-surface border-border text-text-secondary hover:text-text-primary') + '">' +
       `<i class="hgi-stroke ${on ? 'hgi-checkmark-circle-02' : 'hgi-add-circle'} text-14"></i> ${esc(c.name)}</button>`;
-  }).join('');
+  }).join('') +
+  (cmpSelected.size >= 2
+    ? `<div class="w-full text-12 text-accent fw-450 mt-0.5">Comparing ${cmpSelected.size} candidates. Your next question weighs them side by side.</div>`
+    : '');
 }
 
-async function runCompare() {
-  const ids = [...cmpSelected];
-  const question = $('cmpQ').value.trim();
-  const res = $('cmpResult'), btn = $('cmpBtn');
-  if (ids.length < 2) { res.innerHTML = cmpHint('Pick at least two candidates to compare.'); return; }
-  if (!question)      { res.innerHTML = cmpHint('Type a question first.'); return; }
-
-  btn.disabled = true;
-  res.innerHTML = `<div class="flex items-center gap-2.5 text-13 text-text-secondary fw-450">` +
-                  `<span class="pulse-dot"></span> Recalling each candidate’s memories…</div>`;
-  try {
-    const r = await fetch('/compare', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidate_ids: ids, question }),
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    renderCompare(await r.json());
-  } catch (e) {
-    res.innerHTML = `<div class="text-13 text-danger fw-450 flex items-center gap-2">` +
-                    `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn’t compare. Is the server running?</div>`;
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-function cmpHint(msg) {
-  return `<div class="text-13 text-text-secondary fw-450 flex items-center gap-2">` +
-         `<i class="hgi-stroke hgi-information-circle text-14 text-text-tertiary"></i> ${esc(msg)}</div>`;
+// The All-candidates home: one place for every cross-candidate question, with
+// the side-by-side comparison as an optional scope on the same composer.
+function renderAllHome() {
+  $('record').innerHTML =
+    `<div class="mb-2">` +
+      `<div class="text-11 fw-650 uppercase track-wide text-text-tertiary mb-1">Ask across everyone</div>` +
+      `<div class="text-13 text-text-secondary fw-450 leading-relaxed mb-4">` +
+        `Questions search every stored memory and answers name the candidate each fact came from. ` +
+        `To weigh specific people side by side, tick two or more below first.</div>` +
+      `<div id="cmpPicks" class="flex flex-wrap gap-2"></div>` +
+    `</div>`;
+  renderCmpPicks();
 }
 
 // Recommendation on top, then a column per candidate showing exactly which
@@ -862,61 +950,395 @@ function renderCompare(d) {
         : `<div class="text-13 text-text-tertiary fw-450 italic">No relevant memories yet.</div>`) +
     `</div>`).join('');
 
-  $('cmpResult').innerHTML =
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-in';
+  wrap.innerHTML =
     `<div class="chip-in bg-accent-soft rounded-xl p-4 mb-4">` +
       `<div class="text-11 fw-650 uppercase track-wide text-accent mb-1.5">Recommendation</div>` +
       `<div class="text-14 text-text-primary leading-relaxed whitespace-pre-wrap">${esc(d.reply)}</div></div>` +
     `<div class="flex flex-wrap gap-3">${cols}</div>`;
+  thread.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
 }
 
-async function loadMemories() {
-  const mems = await (await fetch(`/candidates/${currentId}/memories`)).json();
-  const box = $('memList');
-  box.innerHTML = simBanner() + reflectBanner();
-  if (!mems.length) {
-    box.insertAdjacentHTML('beforeend',
-      `<div class="text-center text-text-secondary py-16">` +
-      `<i class="hgi-stroke hgi-inbox text-28 block mb-2 text-text-tertiary"></i>` +
-      `<div class="text-14 fw-450">No memories stored yet.</div></div>`);
+// ---- the candidate record: what we remember + past interviews, as the page ----
+function fmtWhen(epoch) {
+  return new Date(epoch * 1000).toLocaleString([], {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+async function renderRecord() {
+  if (!currentId || currentId === 'all') return;
+  const cid = currentId;
+  let mems = [], ivs = [];
+  try {
+    [mems, ivs] = await Promise.all([
+      fetch(`/candidates/${cid}/memories`).then(r => r.json()),
+      fetch(`/candidates/${cid}/interviews`).then(r => r.json()),
+    ]);
+  } catch (e) {
+    $('record').innerHTML = `<div class="text-13 text-danger fw-450 flex items-center gap-2">` +
+      `<i class="hgi-stroke hgi-alert-02 text-14"></i> Couldn't load this candidate's record. Is the server running?</div>`;
     return;
   }
+  if (currentId !== cid) return;   // user switched away while we were fetching
 
-  // Group by category so decay/importance is legible at a glance (mechanism 3).
-  const groups = {};
-  for (const m of mems) (groups[m.category] || (groups[m.category] = [])).push(m);
-  const cats = Object.keys(groups).sort((a, b) => {
-    const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-  });
+  const box = $('record');
+  box.innerHTML = simBanner() + reflectBanner();
 
-  for (const c of cats) {
-    const info = cat(c);
-    const section = document.createElement('div');
-    section.className = 'mb-6';
-
-    const header = document.createElement('div');
-    header.className = 'flex items-center gap-2 pb-2 mb-1 border-b border-hairline';
-    header.innerHTML =
-      `<span class="cat-dot" style="background:${info.color}"></span>` +
-      `<span class="text-11 fw-650 uppercase track-wide" style="color:${info.color}">${info.label}</span>` +
-      `<span class="text-11 text-text-tertiary fw-550">${groups[c].length}</span>`;
-    section.appendChild(header);
-
-    for (const m of groups[c]) {
-      const row = document.createElement('div');
-      row.className = 'py-2.5 flex items-start gap-3';
-      row.innerHTML =
-        `<div class="min-w-0 flex-1">` +
-          `<div class="text-14 fw-450 leading-relaxed">${esc(m.fact_text)}</div>` +
-          `<div class="mt-1.5 flex items-center gap-2 text-12 text-text-tertiary">` +
-            `<span class="font-mono">importance ${m.importance}</span>` +
-            `<span style="color:${info.color}">${impMeter(m.importance)}</span>` +
-          `</div>` +
+  // -- what we remember --
+  const memSec = document.createElement('div');
+  memSec.className = 'mb-2';
+  memSec.innerHTML =
+    `<div class="flex items-center gap-2 mb-1">` +
+      `<span class="text-11 fw-650 uppercase track-wide text-text-tertiary">What we remember</span>` +
+      (mems.length ? `<span class="text-11 text-text-tertiary fw-550">${mems.length}</span>` : '') +
+    `</div>`;
+  if (!mems.length) {
+    memSec.insertAdjacentHTML('beforeend',
+      `<div class="text-13 text-text-secondary fw-450 leading-relaxed py-2">` +
+      `Nothing remembered yet. Press <span class="fw-550 text-accent">Record interview</span> ` +
+      `to capture facts live, or switch the box below to Note and type one.</div>`);
+  } else {
+    const groups = {};
+    for (const m of mems) (groups[m.category] || (groups[m.category] = [])).push(m);
+    const cats = Object.keys(groups).sort((a, b) => {
+      const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+    for (const c of cats) {
+      const info = cat(c);
+      const section = document.createElement('div');
+      section.className = 'mb-4';
+      section.innerHTML =
+        `<div class="flex items-center gap-2 pb-1.5 mb-0.5 border-b border-hairline">` +
+          `<span class="cat-dot" style="background:${info.color}"></span>` +
+          `<span class="text-11 fw-650 uppercase track-wide" style="color:${info.color}">${info.label}</span>` +
+          `<span class="text-11 text-text-tertiary fw-550">${groups[c].length}</span>` +
         `</div>`;
-      section.appendChild(row);
+      for (const m of groups[c]) {
+        section.insertAdjacentHTML('beforeend',
+          `<div class="py-2 flex items-center gap-3">` +
+            `<div class="min-w-0 flex-1 text-14 fw-450 leading-relaxed">${esc(m.fact_text)}</div>` +
+            `<span title="strength ${m.importance} of 10" style="color:${info.color}">${impMeter(m.importance)}</span>` +
+          `</div>`);
+      }
+      memSec.appendChild(section);
     }
-    box.appendChild(section);
   }
+  box.appendChild(memSec);
+
+  // -- past interviews (transcripts + the logged consent time) --
+  if (ivs.length) {
+    const ivSec = document.createElement('div');
+    ivSec.className = 'mt-5';
+    ivSec.innerHTML =
+      `<div class="flex items-center gap-2 mb-1">` +
+        `<span class="text-11 fw-650 uppercase track-wide text-text-tertiary">Interviews</span>` +
+        `<span class="text-11 text-text-tertiary fw-550">${ivs.length}</span>` +
+      `</div>`;
+    for (const s of ivs) {
+      const mins = s.ended_at ? Math.max(1, Math.round((s.ended_at - s.started_at) / 60)) : null;
+      ivSec.insertAdjacentHTML('beforeend',
+        `<details class="group border-b border-hairline py-2.5">` +
+          `<summary class="list-none cursor-pointer flex items-center gap-2.5">` +
+            `<i class="hgi-stroke hgi-mic-01 text-14 text-text-tertiary shrink-0"></i>` +
+            `<span class="text-14 fw-450">${fmtWhen(s.started_at)}</span>` +
+            `<span class="text-12 text-text-tertiary fw-450">${mins !== null ? mins + ' min' : 'in progress'}` +
+              ` · consent logged ${fmtWhen(s.consent_confirmed_at)}</span>` +
+            `<i class="hgi-stroke hgi-arrow-down-01 text-12 text-text-tertiary ml-auto transition-transform group-open:rotate-180"></i>` +
+          `</summary>` +
+          `<div class="mt-2 ml-6 text-13 text-text-secondary fw-450 leading-relaxed whitespace-pre-wrap">` +
+            (s.transcript ? esc(s.transcript.trim()) : '<span class="italic">No speech was transcribed.</span>') +
+          `</div>` +
+        `</details>`);
+    }
+    box.appendChild(ivSec);
+  }
+}
+
+// ---- live interview capture ----
+// Raw audio is captured with the Web Audio API (not MediaRecorder) because the
+// ASR API accepts WAV/MP3/AAC and Chrome's MediaRecorder only produces webm.
+// We buffer samples continuously and slice every 6s. Each slice starts with the
+// last 1.5s of the previous one, so a word cut at the boundary is transcribed
+// whole in the next chunk (the server drops the repeated words). Each slice is
+// downsampled to 16 kHz mono, wrapped in a WAV header, base64'd, and POSTed;
+// the backend transcribes it and feeds the words into the same extraction
+// pipeline typed notes use.
+let iv = null;       // active session: {id, ctx, proc, stream, samples, chain, ...}
+let ivStartMs = 0;   // survives past end-of-interview for the last chunk's timestamp
+let ivFactCount = 0; // memories formed this session, for the closing summary
+const SLICE_MS = 6000;
+const OVERLAP_MS = 1500;
+
+function openInterview() {
+  if (!currentId || currentId === 'all' || iv) return;
+  $('ivConsentErr').classList.add('hidden');
+  $('ivConsentName').textContent = $('hdrName').textContent;
+  $('ivConsentName2').textContent = $('hdrName').textContent;
+  $('ivConsent').classList.remove('hidden');
+  $('ivLive').classList.add('hidden');
+  $('interviewPanel').classList.remove('hidden');
+}
+function cancelInterview() { $('interviewPanel').classList.add('hidden'); }
+
+// Consent gate: the interview record (with its consent timestamp) is created
+// FIRST; only a successful response unlocks the microphone request.
+async function confirmConsent() {
+  const btn = $('ivConfirmBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/candidates/${currentId}/interviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consent_confirmed: true }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rec = await r.json();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    });
+    startCapture(rec.id, stream);
+  } catch (e) {
+    const err = $('ivConsentErr');
+    err.textContent = e.name === 'NotAllowedError'
+      ? 'Microphone access was denied. Allow it in the browser and try again.'
+      : "Couldn't start the interview. Is the server running? (The mic also needs localhost or https.)";
+    err.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function startCapture(id, stream) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = ctx.createMediaStreamSource(stream);
+  // ponytail: ScriptProcessor is deprecated but universal and keeps this single-file;
+  // swap to an AudioWorklet if browsers ever remove it.
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  const samples = [];
+  proc.onaudioprocess = (e) => samples.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  src.connect(proc);
+  proc.connect(ctx.destination);
+
+  ivStartMs = Date.now();
+  ivFactCount = 0;
+  iv = { id, ctx, proc, stream, samples, rate: ctx.sampleRate,
+         startMs: ivStartMs, chain: Promise.resolve(), tail: null, silentRuns: 0 };
+  iv.sliceTimer = setInterval(sendSlice, SLICE_MS);
+  iv.clockTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - iv.startMs) / 1000);
+    $('ivTimer').textContent =
+      String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }, 1000);
+
+  // While the mic is live, everything outside this panel is visibly locked.
+  $('sidebar').classList.add('rec-lock');
+  $('recBtn').disabled = true;
+
+  $('ivTranscript').innerHTML =
+    `<div class="text-13 text-text-tertiary fw-450 italic">Listening… words appear a few seconds after they are spoken.</div>`;
+  $('ivFacts').innerHTML =
+    `<div id="ivFactsHint" class="text-13 text-text-tertiary fw-450 italic">Facts the memory engine extracts will slide in here.</div>`;
+  $('ivTimer').textContent = '00:00';
+  $('ivConsent').classList.add('hidden');
+  $('ivLive').classList.remove('hidden');
+}
+
+// Drain the sample buffer into one Float32Array, prefixed with the last 1.5s
+// of the previous slice (the overlap that saves boundary-cut words), and keep
+// this slice's own tail for the next one.
+function collectSlice(s) {
+  const parts = s.samples.splice(0);
+  if (!parts.length) return null;
+  let n = 0;
+  for (const p of parts) n += p.length;
+  const tail = s.tail || new Float32Array(0);
+  const all = new Float32Array(tail.length + n);
+  all.set(tail, 0);
+  let off = tail.length;
+  for (const p of parts) { all.set(p, off); off += p.length; }
+  const keep = Math.min(all.length, Math.floor(s.rate * OVERLAP_MS / 1000));
+  s.tail = all.slice(all.length - keep);
+  return all;
+}
+
+// True if any 0.5s window has audible energy. Checked per window (not over the
+// whole slice) so a few quiet words in an otherwise silent slice still count.
+function hasSpeech(all, rate) {
+  const win = Math.max(1, Math.floor(rate / 2));
+  for (let start = 0; start < all.length; start += win) {
+    const end = Math.min(all.length, start + win);
+    let sum = 0, count = 0;
+    for (let i = start; i < end; i += 8) { sum += all[i] * all[i]; count++; }
+    if (count && Math.sqrt(sum / count) >= 0.0035) return true;
+  }
+  return false;
+}
+
+// If the mic goes quiet for a while (muted, wrong input device), say so once
+// instead of leaving the recruiter staring at a transcript that never grows.
+function noteSilence() {
+  if (!iv) return;
+  iv.silentRuns += 1;
+  if (iv.silentRuns !== 3) return;
+  const d = document.createElement('div');
+  d.className = 'text-13 text-text-tertiary fw-450 italic';
+  d.textContent = 'No speech detected for a while. If you are talking, check the microphone.';
+  const box = $('ivTranscript');
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+// Slice the sample buffer and queue the upload. Sends are chained so transcript
+// order is preserved even when one ASR call is slow.
+function sendSlice() {
+  if (!iv) return;
+  const all = collectSlice(iv);
+  if (!all) return;
+  if (!hasSpeech(all, iv.rate)) { noteSilence(); return; }  // saves an ASR call while nobody is talking
+  iv.silentRuns = 0;
+  const wav = encodeWav(all, iv.rate);
+  const sessionId = iv.id;
+  iv.chain = iv.chain.then(() => postChunk(sessionId, wav)).catch(() => {});
+}
+
+// Downsample to 16 kHz mono (linear interpolation) and wrap in a 44-byte RIFF header.
+function encodeWav(f32, srcRate) {
+  const rate = 16000, ratio = srcRate / rate;
+  const n = Math.floor(f32.length / ratio);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const pos = i * ratio, lo = Math.floor(pos), hi = Math.min(lo + 1, f32.length - 1), t = pos - lo;
+    const s = Math.max(-1, Math.min(1, f32[lo] * (1 - t) + f32[hi] * t));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+const blobToB64 = (blob) => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = () => resolve(fr.result.split(',')[1]);  // strip the data: prefix
+  fr.onerror = reject;
+  fr.readAsDataURL(blob);
+});
+
+async function postChunk(sessionId, wavBlob) {
+  const box = $('ivTranscript');
+  const busy = document.createElement('div');
+  busy.className = 'flex items-center gap-2 text-13 text-text-secondary fw-450';
+  busy.innerHTML = `<span class="pulse-dot"></span> Transcribing…`;
+  box.appendChild(busy);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const audio_b64 = await blobToB64(wavBlob);
+    const r = await fetch(`/interviews/${sessionId}/audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_b64 }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    busy.remove();
+    if (d.text) appendTranscriptLine(d.text);
+    appendLiveFacts(d.new_facts || []);
+  } catch (e) {
+    busy.className = 'text-13 text-danger fw-450';
+    busy.textContent = "Couldn't transcribe that chunk; the recording continues.";
+  }
+}
+
+function appendTranscriptLine(text) {
+  const box = $('ivTranscript');
+  const s = Math.floor((Date.now() - ivStartMs) / 1000);
+  const stamp = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  const row = document.createElement('div');
+  row.className = 'msg-in flex gap-2.5 items-baseline';
+  row.innerHTML =
+    `<span class="font-mono text-11 text-text-tertiary shrink-0">${stamp}</span>` +
+    `<span class="text-14 leading-relaxed">${esc(text)}</span>`;
+  box.appendChild(row);
+  box.scrollTop = box.scrollHeight;
+}
+
+// New facts slide in as the same accent chips the chat uses (shared memoryChip()).
+function appendLiveFacts(facts) {
+  const box = $('ivFacts');
+  if (facts.length) {
+    ivFactCount += facts.length;
+    const hint = $('ivFactsHint');
+    if (hint) hint.remove();
+  }
+  facts.forEach((f, i) => {
+    if (f.replaces) {
+      const d = document.createElement('div');
+      d.className = 'chip-in text-12 text-text-secondary fw-450';
+      d.innerHTML = `<span class="line-through opacity-60">${esc(f.replaces)}</span> updated`;
+      box.appendChild(d);
+    }
+    setTimeout(() => { box.appendChild(memoryChip(f)); box.scrollTop = box.scrollHeight; }, i * 90);
+  });
+}
+
+async function endInterview() {
+  if (!iv) return;
+  if (!confirm('End the interview and stop recording?')) return;
+  const s = iv;
+  iv = null;                       // stop accepting new slices immediately
+  $('ivEndBtn').disabled = true;
+  clearInterval(s.sliceTimer);
+  clearInterval(s.clockTimer);
+
+  // final partial slice, then release the microphone (red indicator goes away)
+  const all = collectSlice(s);
+  if (all && hasSpeech(all, s.rate)) {
+    const wav = encodeWav(all, s.rate);
+    s.chain = s.chain.then(() => postChunk(s.id, wav)).catch(() => {});
+  }
+  s.proc.disconnect();
+  s.ctx.close();
+  s.stream.getTracks().forEach((t) => t.stop());
+
+  await s.chain;                   // make sure the last chunk landed first
+  let bits = '';
+  try {
+    const r = await fetch(`/interviews/${s.id}/end`, { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    appendLiveFacts(d.new_facts || []);
+    const ins = (d.insights || []).length;
+    bits = ` · ${ivFactCount} memor${ivFactCount === 1 ? 'y' : 'ies'} formed` +
+           (ins ? ` · ${ins} insight${ins === 1 ? '' : 's'}` : '');
+    $('ivStatus').innerHTML =
+      `<i class="hgi-stroke hgi-checkmark-circle-02 text-16 text-accent"></i> Interview ended` +
+      `<span class="text-13 text-text-secondary fw-450">${bits}</span>`;
+  } catch (e) {
+    $('ivStatus').innerHTML = `<span class="text-danger text-13 fw-450">Couldn't close the interview cleanly, but all facts up to now are stored.</span>`;
+  }
+  // unlock the rest of the app and turn End into the bridge back to the record
+  $('sidebar').classList.remove('rec-lock');
+  $('recBtn').disabled = false;
+  const btn = $('ivEndBtn');
+  btn.disabled = false;
+  btn.classList.replace('bg-danger', 'bg-accent');
+  btn.innerHTML = `<i class="hgi-stroke hgi-user text-14"></i> View record`;
+  btn.onclick = () => {
+    $('interviewPanel').classList.add('hidden');
+    btn.classList.replace('bg-accent', 'bg-danger');
+    btn.innerHTML = `<i class="hgi-stroke hgi-stop text-14"></i> End interview`;
+    btn.onclick = endInterview;
+    $('ivStatus').innerHTML = `<span class="pulse-dot rec"></span> Recording
+      <span id="ivTimer" class="font-mono text-13 text-text-secondary fw-450">00:00</span>`;
+    renderRecord();   // the new memories and the transcript are now on the page
+  };
 }
 
 // escape user/model text before putting it in innerHTML
@@ -925,6 +1347,7 @@ function esc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+setMode(true);
 loadCandidates();
 </script>
 </body>

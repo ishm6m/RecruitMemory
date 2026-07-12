@@ -152,6 +152,61 @@ def retrieve(candidate_id, query, k=TOP_K):
     return top
 
 
+def retrieve_global(query, k=8):
+    """
+    Cross-candidate retrieval: same weighted-sum ranking as retrieve(), but over
+    EVERY candidate's active memories in one pool. Each result carries the
+    candidate's name so answers can say who each fact belongs to.
+    """
+    memories = db.get_all_active_memories()
+    if not memories:
+        return []
+
+    query_vec = np.array(qwen.embed(query))
+    now = time.time()
+
+    scored = []
+    for m in memories:
+        relevance = max(0.0, _cosine(query_vec, np.array(m["embedding"])))
+        importance = m["importance"] / 10.0
+        recency = _recency_weight(m["last_accessed_at"], now)
+        scored.append((W_RELEVANCE * relevance + W_IMPORTANCE * importance
+                       + W_RECENCY * recency, m))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = [m for _, m in scored[:k]]
+
+    db.touch_memories([m["id"] for m in top])
+    return top
+
+
+def ask_all(question):
+    """
+    Answer a question across ALL candidates ("who scored best on safety?").
+    Recall the globally top-ranked memories, then have Qwen answer citing each
+    fact's candidate by name. Query-only: nothing here stores a memory, because
+    a question about candidates is not a fact about any one of them.
+    """
+    recalled = retrieve_global(question)
+    lines = "\n".join(f"- {m['candidate_name']}: {m['fact_text']}" for m in recalled) \
+            or "(no memories stored yet)"
+    prompt = [
+        {"role": "system", "content": (
+            "You are a hiring assistant for Jabbar Jute Mills. Answer the "
+            "interviewer's question using ONLY these remembered facts, gathered "
+            "across all candidates. Always name which candidate each point is "
+            "about. If the facts don't answer the question, say so plainly.\n"
+            f"{lines}"
+        )},
+        {"role": "user", "content": question},
+    ]
+    return {
+        "reply": qwen.chat(prompt),
+        "recalled": [{"candidate": m["candidate_name"], "fact": m["fact_text"]}
+                     for m in recalled],
+    }
+
+
 # =====================================================================
 # 3. DECAY + CONSOLIDATION
 # =====================================================================

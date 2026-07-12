@@ -10,3 +10,4 @@ __pycache__/
 .venv/
 venv/
 .gstack/
+.DS_Store

@@ -50,11 +50,22 @@ def _fake_chat(messages, temperature=0.3):
         return "NO"
     if "Compare the candidates" in system:
         return "Candidate comparison verdict."
+    if "gathered across all candidates" in system:
+        return "Cross-candidate answer naming names."
     return "Noted."
+
+
+# Tests preload this list; each audio POST pops the next "transcript".
+_fake_transcripts = []
+
+
+def _fake_transcribe(audio_b64):
+    return _fake_transcripts.pop(0) if _fake_transcripts else ""
 
 
 qwen.chat = _fake_chat
 qwen.embed = _fake_embed
+qwen.transcribe = _fake_transcribe
 
 client = TestClient(app)
 
@@ -122,6 +133,117 @@ def test_delete_cascades_memories():
     assert client.delete(f"/candidates/{cid}").status_code == 200
     assert db.get_candidate(cid) is None
     assert db.count_active_memories(cid) == 0       # memories cascaded away
+
+
+# --- live interview tests ----------------------------------------------
+def test_interview_requires_consent():
+    cid = client.post("/candidates", json={"name": "Consent"}).json()["id"]
+    r = client.post(f"/candidates/{cid}/interviews", json={"consent_confirmed": False})
+    assert r.status_code == 400                     # no consent, no recording
+    r = client.post(f"/candidates/{cid}/interviews", json={"consent_confirmed": True})
+    assert r.status_code == 200 and r.json()["consent_confirmed_at"]
+    assert client.post("/candidates/999999/interviews",
+                       json={"consent_confirmed": True}).status_code == 404
+    # audio is impossible without a consented session
+    assert client.post("/interviews/999999/audio", json={"audio_b64": "AAAA"}).status_code == 404
+
+
+def test_audio_chunk_transcribes_and_extracts():
+    cid = client.post("/candidates", json={"name": "Spoken"}).json()["id"]
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    _fake_transcripts.append("Spoken scored 9 on safety.")
+    body = client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).json()
+    assert body["text"] == "Spoken scored 9 on safety."
+    assert len(body["new_facts"]) == 1              # fed through extract_and_store
+    assert db.count_active_memories(cid) == 1
+    done = client.post(f"/interviews/{iid}/end").json()
+    assert "Spoken scored 9 on safety." in done["transcript"]
+    assert done["transcript"].startswith("[00:")    # timestamped line
+    assert done["ended_at"]
+    # no more audio after the interview ended
+    assert client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).status_code == 409
+
+
+def test_chunk_carry_over_joins_split_sentence():
+    cid = client.post("/candidates", json={"name": "Split"}).json()["id"]
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    _fake_transcripts.extend(["Split scored", "9 on communication."])
+    first = client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).json()
+    assert first["new_facts"] == []                 # fragment held, not extracted
+    second = client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).json()
+    assert len(second["new_facts"]) == 1
+    assert "Split scored 9 on communication." in second["new_facts"][0]["fact"]
+    client.post(f"/interviews/{iid}/end")
+
+
+def test_overlap_repeat_words_are_dropped():
+    # chunks are sent with ~1.5s of overlapping audio, so a chunk's transcript
+    # can start by repeating the previous chunk's last words; the server drops them
+    cid = client.post("/candidates", json={"name": "Overlap"}).json()["id"]
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    _fake_transcripts.extend(["Overlap scored nine on safety.",
+                              "on safety. He trained four operators."])
+    first = client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).json()
+    assert first["text"] == "Overlap scored nine on safety."
+    second = client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).json()
+    assert second["text"] == "He trained four operators."   # repeated words stripped
+    done = client.post(f"/interviews/{iid}/end").json()
+    assert done["transcript"].count("on safety") == 1       # no duplicate in the record
+
+
+def test_silent_chunk_is_a_noop():
+    cid = client.post("/candidates", json={"name": "Quiet"}).json()["id"]
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    body = client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"}).json()
+    assert body == {"text": "", "new_facts": []}
+    assert db.count_active_memories(cid) == 0
+
+
+def test_ask_mode_is_read_only():
+    cid = client.post("/candidates", json={"name": "ReadOnly"}).json()["id"]
+    client.post(f"/candidates/{cid}/chat", json={"message": "ReadOnly scored 8 on safety."})
+    before = db.count_active_memories(cid)
+    body = client.post(f"/candidates/{cid}/chat",
+                       json={"message": "How safe are they?", "mode": "ask"}).json()
+    assert body["reply"] and body["new_facts"] == []
+    assert db.count_active_memories(cid) == before   # asking stored nothing
+
+
+def test_list_interviews_returns_transcript():
+    cid = client.post("/candidates", json={"name": "History"}).json()["id"]
+    iid = client.post(f"/candidates/{cid}/interviews",
+                      json={"consent_confirmed": True}).json()["id"]
+    _fake_transcripts.append("History mentioned a forklift license.")
+    client.post(f"/interviews/{iid}/audio", json={"audio_b64": "AAAA"})
+    client.post(f"/interviews/{iid}/end")
+    ivs = client.get(f"/candidates/{cid}/interviews").json()
+    assert len(ivs) == 1
+    assert "forklift license" in ivs[0]["transcript"]
+    assert ivs[0]["consent_confirmed_at"] and ivs[0]["ended_at"]
+    assert client.get("/candidates/999999/interviews").status_code == 404
+
+
+# --- cross-candidate ask ------------------------------------------------
+def test_ask_searches_across_all_candidates():
+    a = client.post("/candidates", json={"name": "AskKarim"}).json()["id"]
+    b = client.post("/candidates", json={"name": "AskRahim"}).json()["id"]
+    client.post(f"/candidates/{a}/chat", json={"message": "AskKarim scored 9 on communication."})
+    client.post(f"/candidates/{b}/chat", json={"message": "AskRahim scored 6 on communication."})
+    before = db.count_active_memories(a) + db.count_active_memories(b)
+
+    assert client.post("/ask", json={"question": "  "}).status_code == 400
+    r = client.post("/ask", json={"question": "Who communicates best?"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"]
+    names = {m["candidate"] for m in body["recalled"]}
+    assert {"AskKarim", "AskRahim"} <= names      # facts came from BOTH candidates
+    # query-only: asking must not have stored anything new
+    assert db.count_active_memories(a) + db.count_active_memories(b) == before
 
 
 # --- db-layer tests (the part eval.py and the endpoints don't isolate) ---

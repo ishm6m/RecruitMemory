@@ -54,6 +54,46 @@ understanding deepening in real time, not just facts piling up.*
 
 ---
 
+## From typed notes to live interviews
+
+RecruitMemory originally learned facts one way: the recruiter typed a debrief
+into the chat after the interview. It now **listens to the interview itself**.
+A consent-gated recorder captures microphone audio in the browser, slices it
+into 6-second chunks that each begin with 1.5 seconds of the previous chunk
+(so words spoken right at a chunk boundary are never cut in half; the server
+drops the repeated words), transcribes each chunk with **`qwen3-asr-flash`** (Qwen's
+speech recognition model, called through the same OpenAI-compatible API as chat
+and embeddings), and pipes the words into the *same* extraction, dedup, and
+belief-update pipeline that typed notes use. Facts appear on screen as the
+candidate is still talking.
+
+Why this matters:
+
+- **Less recruiter friction.** No typing during or after the interview; the
+  debrief writes itself.
+- **More complete and consistent capture.** The transcript catches details a
+  tired interviewer would forget to write down, and every interview is captured
+  the same way.
+- **The memory engine underneath is unchanged.** Extraction takes text and does
+  not care whether a human typed it or a microphone heard it, demonstrating the
+  architecture was input-source-agnostic from the start. Manual note entry
+  still works in the chat for interviews without a laptop present.
+
+Privacy is handled explicitly: recording can only start after the interviewer
+confirms the candidate has been informed, and that **consent confirmation
+timestamp is stored on the interview record** (an interview row cannot exist
+without one). The full timestamped transcript is kept with the record for
+auditability.
+
+The chat box is now the **query tool**: ask about one candidate, or select
+**All candidates** in the sidebar to search every stored memory at once
+("Which candidates scored best on communication?"), with every answer citing
+which candidate each fact came from.
+
+> Note: browsers only allow microphone access on `localhost` or `https` pages.
+
+---
+
 ## Does the memory actually work?
 
 A memory agent should be *measured*, not just asserted. [`eval.py`](eval.py) runs
@@ -123,7 +163,8 @@ swap doesn't regress recall.
 ### Stack
 - **Backend:** FastAPI + uvicorn (Python 3.10)
 - **AI:** Qwen Cloud via the OpenAI-compatible API: `qwen-plus` for chat,
-  `text-embedding-v3` for embeddings
+  `text-embedding-v3` for embeddings, `qwen3-asr-flash` for live interview
+  transcription
 - **Storage:** SQLite (single file; embeddings stored as JSON)
 - **Backup:** Alibaba Cloud OSS ([`backup.py`](backup.py))
 - **Frontend:** single hand-built HTML page, Tailwind (CDN) + Hugeicons, no build step
@@ -144,6 +185,7 @@ QWEN_API_KEY=your-qwen-key
 QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 QWEN_CHAT_MODEL=qwen-plus
 QWEN_EMBED_MODEL=text-embedding-v3
+QWEN_ASR_MODEL=qwen3-asr-flash
 
 # Optional, only needed for cloud backups (backup.py)
 OSS_ACCESS_KEY_ID=
@@ -181,20 +223,32 @@ python backup.py restore  # pull the newest backup back down
 |--------|------|---------|
 | `POST` | `/candidates` | Create a candidate `{name, role}` |
 | `GET`  | `/candidates` | List candidates |
-| `POST` | `/candidates/{id}/chat` | Chat, recalls memories, replies, extracts new facts |
+| `POST` | `/candidates/{id}/chat` | Ask (`mode:"ask"`, read-only) or note (`mode:"note"`, also extracts facts) |
+| `GET` | `/candidates/{id}/interviews` | Past interview sessions with transcripts and consent timestamps |
 | `POST` | `/candidates/{id}/reflect` | Synthesize higher-order insights from the raw facts |
 | `GET`  | `/candidates/{id}/memories` | Inspect stored memories (live decayed strength) |
+| `POST` | `/candidates/{id}/interviews` | Start a live interview (requires `{"consent_confirmed": true}`; logs the timestamp) |
+| `POST` | `/interviews/{id}/audio` | Transcribe a ~6s WAV chunk (`{"audio_b64"}`) and extract facts from it |
+| `POST` | `/interviews/{id}/end` | End the interview: flush, decay, reflect, return the transcript |
+| `POST` | `/ask` | Ask a question across ALL candidates' memories (query-only) |
 
 ---
 
 ## Try it
 
 1. Create a candidate, e.g. **Karim** (role: *Loom Operator*).
-2. Tell it facts across separate messages:
-   *"Karim has 5 years on jute looms."* … *"He scored 8/10 on the safety test."*
-3. Ask later: *"Is Karim a good fit for a senior loom role?"* It recalls the
-   relevant facts and answers with them. Watch the newly-extracted facts appear
-   as pills under your message.
+2. Press **Record interview**, confirm the consent prompt, and speak as if
+   interviewing: *"Karim has 5 years on jute looms. He scored 8 out of 10 on
+   the safety test."* Watch the transcript scroll on the left and the extracted
+   facts slide in on the right. End the interview: the new memories and the
+   full transcript (with the logged consent time) are now on Karim's page.
+   (No microphone handy? Switch the composer to **Note** and type the same
+   facts instead.)
+3. Ask later, in **Ask** mode: *"Is Karim a good fit for a senior loom role?"*
+   It recalls the relevant facts and answers with them; asking never stores
+   anything. Then click **All candidates** and ask *"Who scored best on
+   safety?"* to query across everyone at once, or tick two candidates there to
+   weigh them side by side.
 
 ---
 
@@ -206,6 +260,9 @@ Hiring is a high-stakes, legally sensitive domain, so RecruitMemory is built as
 - **A human makes the hiring call.** The assistant surfaces and weighs remembered
   facts; it never issues an autonomous hire/reject verdict. This is stated in the
   UI on every screen.
+- **Recording is consent-gated.** The microphone cannot start until the
+  interviewer confirms the candidate has been informed, and that confirmation
+  timestamp is stored on the interview record alongside the transcript.
 - **Every recommendation is auditable.** The exact memories behind any answer are
   shown (the "recalled" list and the Compare evidence columns), no black-box scores.
 - **Memories are inspectable and deletable.** You can view a candidate's full

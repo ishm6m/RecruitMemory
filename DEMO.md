@@ -8,11 +8,15 @@ natural.
 **Before you start:**
 - Run `docker compose up --build` (or `uvicorn app:app`) and open
   **http://localhost:8000**.
-- **Pre-load the demo candidate** so the *Compare* finale is instant: click
-  **"Load demo candidate"** under the Add-candidate box in the sidebar. This seeds
-  **Salma (demo)** with a few facts in one click (no typing needed).
-- Leave **Karim uncreated**, you'll build him live. Have the **"Stored
-  memories"** button and the sidebar **"Compare"** button in mind.
+- **Pre-load the demo candidate** so the *Compare* finale is instant: open
+  **"Demo tools"** at the bottom of the sidebar and click **"Load demo
+  candidate"**. This seeds **Salma (demo)** with a few facts in one click.
+- Leave **Karim uncreated**, you'll build him live. Know your controls: a
+  candidate's memories and past interviews are **on their page** the moment you
+  select them; **Synthesize insights** and **Advance time** live under **Demo
+  tools**; cross-candidate questions live under **All candidates** in the
+  sidebar. The composer has two modes: **Ask** (answers from memory, stores
+  nothing) and **Note** (teaches it a fact).
 
 ---
 
@@ -26,9 +30,9 @@ natural.
 
 *(Show the clean UI. Salma already sits in the sidebar; Karim doesn't exist yet.)*
 
-**Prove it's real memory, not just a live chat. Reload the page.** Click Salma,
-show her stored facts, then **hard-refresh the browser (Cmd+Shift+R)**. She and
-every fact are still there.
+**Prove it's real memory, not just a live chat. Reload the page.** Click Salma:
+her remembered facts ARE the page. Then **hard-refresh the browser
+(Cmd+Shift+R)**. She and every fact are still there.
 
 > "I talked to Salma in an earlier session, and I've since closed the app. Watch: I
 > reload the whole page, and she's still here, with everything I learned about
@@ -40,9 +44,16 @@ every fact are still there.
 ## 0:20 to 0:55 · Teach it facts, then correct it → **Extraction + belief update**
 
 1. Create a candidate: **Karim**, role **Loom Operator**.
-2. Type: **"Karim has 5 years of experience on jute looms."** → send.
-3. Type: **"He scored 6 out of 10 on the safety assessment."** → send.
-4. Type: **"Correction: Karim actually scored 9 out of 10 on the safety test."** → send.
+2. Switch the composer to **Note**.
+3. Type: **"Karim has 5 years of experience on jute looms."** → send.
+4. Type: **"He scored 6 out of 10 on the safety assessment."** → send.
+5. Type: **"Correction: Karim actually scored 9 out of 10 on the safety test."** → send.
+
+*(Bigger-wow option if the room is quiet: press **Record interview** instead,
+confirm consent, and SPEAK those three sentences. The transcript scrolls on the
+left and the same fact chips slide in live on the right; end the interview and
+the facts plus the full transcript are on Karim's page. Same pipeline, by
+voice. Fall back to typed Notes if the room is loud.)*
 
 > "As I talk, the assistant **extracts structured facts**, each pill is a new
 > memory: a skill, a score. This is mechanism one, **extraction**. But watch the
@@ -57,7 +68,8 @@ teal "updated" chip.)*
 
 ## 0:55 to 1:35 · Ask a question → **Retrieval**
 
-1. Ask: **"Would Karim be a good fit for a senior loom operator role?"** → send.
+1. Switch the composer back to **Ask** and type:
+   **"Would Karim be a good fit for a senior loom operator role?"** → send.
 
 > "I never repeated any of those facts in my question. The assistant **searched
 > its memory**, pulled the relevant ones, his experience and the corrected safety
@@ -73,7 +85,7 @@ injected stays flat.)*
 
 ## 1:35 to 1:55 · It forms opinions it was never told → **Reflection**
 
-1. Open **"Stored memories."** Click **"Synthesize insights."**
+1. Open **"Demo tools"** (sidebar bottom) and click **"Synthesize insights."**
 
 > "So far it's *storing* facts. But real understanding means noticing patterns no
 > single fact states. Watch: I click **Synthesize insights**, and it reads
@@ -84,7 +96,7 @@ injected stays flat.)*
 > understanding is *deepening*, not just growing. This also fires **on its own** as
 > a conversation grows. I'm pressing the button here only to show it on cue."
 
-*(Point at the amber **insight** rows that appear at the top of the store.)*
+*(Point at the amber **insight** rows that appear at the top of Karim's page.)*
 
 ---
 
@@ -92,8 +104,8 @@ injected stays flat.)*
 
 *(This is the differentiator. Most "memory" demos only claim it. We show it.)*
 
-1. Open **"Stored memories."** Point at the importance bars.
-2. Set the **"Advance time"** control to **+3 months** and click it.
+1. Point at the strength bars next to Karim's memories on his page.
+2. In **Demo tools**, set the dropdown to **+3 months** and click **"Advance time."**
 
 > "A memory system that only remembers is just a database. Real memory
 > **forgets**. Importance **halves every two weeks** a fact goes untouched. Instead
@@ -111,8 +123,8 @@ injected stays flat.)*
 
 ## 2:25 to 2:50 · Two candidates at once → **Compare**
 
-1. Click **"Compare"** in the sidebar. Tick **Karim** and **Salma**.
-2. Ask: **"Who is the better fit for a senior loom role?"** → Compare.
+1. Click **"All candidates"** at the top of the sidebar. Tick **Karim** and **Salma**.
+2. Ask: **"Who is the better fit for a senior loom role?"** → send.
 
 > "Memory isn't just per-person recall. Here it reasons across candidates: it
 > pulls **each one's own remembered facts** and weighs them. Karim's experience
@@ -139,9 +151,9 @@ injected stays flat.)*
 ---
 
 ## If something breaks (backup plan)
-- **Qwen slow/erroring live?** Salma is already loaded, lead with "Stored
-  memories" + the *Advance time* decay demo + *Compare*, which lean less on fresh
-  generation.
+- **Qwen slow/erroring live?** Salma is already loaded, lead with her record
+  page + the *Advance time* decay demo + the *All candidates* comparison, which
+  lean less on fresh generation.
 - **Wifi dies?** Walk through the README's architecture diagram and the functions
   in `memory.py`, the story holds without a live server.
 - **Running short?** The three must-keep beats are **Synthesize insights**
