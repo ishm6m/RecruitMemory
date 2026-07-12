@@ -86,7 +86,7 @@ def extract_and_store(candidate_id, interviewer_msg, source="manual_note"):
 
     stored = []
     for f in facts:
-        fact_text = str(f.get("fact", "")).strip()
+        fact_text = _no_dashes(str(f.get("fact", "")).strip())
         if not fact_text:
             continue
         category = f.get("category", "note")
@@ -241,7 +241,7 @@ def decay_and_consolidate(candidate_id):
     # `content` can come back None (length cutoff, refusal); `or ""` keeps .strip()
     # from crashing. An empty summary must NOT archive the batch behind it (that
     # would silently drop those facts), so bail out and leave them active.
-    summary = (qwen.chat(prompt, temperature=0) or "").strip()
+    summary = _no_dashes((qwen.chat(prompt, temperature=0) or "").strip())
     if not summary:
         return {"consolidated": 0, "archived": archived}
 
@@ -324,7 +324,7 @@ def reflect(candidate_id):
                          if m["category"] == "insight"]
     stored = []
     for p in proposed:
-        text = str(p.get("insight", "")).strip()
+        text = _no_dashes(str(p.get("insight", "")).strip())
         if not text:
             continue
         importance = _clamp_importance(p.get("importance", 8), 8, INSIGHT_MIN_IMPORTANCE)
@@ -355,13 +355,15 @@ def suggest_questions(candidate_id):
             "below about one candidate, write 5-8 interview questions (one may "
             "be a small practical task) that probe DEPTH on this candidate's "
             "specific background. Every question must anchor to something "
-            "concrete in the facts; no generic questions. Return ONLY a JSON "
-            "array of strings."
+            "concrete in the facts; no generic questions. Do NOT invent "
+            "specifics the facts don't state (no made-up standards, numbers, "
+            "or equipment). Plain sentences, no markdown emphasis. Return "
+            "ONLY a JSON array of strings."
         )},
         {"role": "user", "content": _bullets(facts)},
     ]
     proposed = _parse_json_array(qwen.chat(prompt, temperature=0.4))
-    return [str(q).strip() for q in proposed if str(q).strip()][:8]
+    return [_no_dashes(str(q).strip()) for q in proposed if str(q).strip()][:8]
 
 
 def compare(candidate_ids, question):
@@ -417,6 +419,11 @@ def _clamp_importance(value, default, lo=1, hi=10):
     except (TypeError, ValueError):
         n = default
     return max(lo, min(hi, n))
+
+
+def _no_dashes(s):
+    """Project style rule: no em or en dashes anywhere, including model output."""
+    return s.replace("—", ", ").replace("–", "-")
 
 
 def _bullets(items, empty=""):
@@ -518,4 +525,5 @@ if __name__ == "__main__":
     # bullets renders rows or plain strings, and falls back when empty
     assert _bullets([{"fact_text": "a"}, "b"]) == "- a\n- b"
     assert _bullets([], "(none)") == "(none)"
+    assert _no_dashes("a—b and 2019–2024") == "a, b and 2019-2024"
     print("memory.py self-checks passed")
