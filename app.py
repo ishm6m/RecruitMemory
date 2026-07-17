@@ -441,18 +441,13 @@ def _preload_sources(candidate_id, resume_text="", portfolio_text="",
     return {"new_facts": new_facts, "questions": questions}
 
 
-def _preload_resume(candidate_id, text):
-    """Single-file resume upload: the resume-only case of _preload_sources."""
-    return _preload_sources(candidate_id, resume_text=text)
-
-
 @app.post("/candidates/{candidate_id}/resume")
 def upload_resume(candidate_id: int, body: ResumeIn):
     """Pre-load memory from a resume/portfolio (PDF or .txt) for ONE existing
-    candidate: extract text, run the shared resume pipeline."""
+    candidate: extract text, run the shared resume pipeline (resume-only case)."""
     if not db.get_candidate(candidate_id):
         raise HTTPException(404, "candidate not found")
-    return _preload_resume(candidate_id, _file_text(body.file_b64, body.filename))
+    return _preload_sources(candidate_id, resume_text=_file_text(body.file_b64, body.filename))
 
 
 # ---- bulk CV upload ----
@@ -728,9 +723,7 @@ def _drive_file_id(url):
     if "drive.google.com" not in (u.hostname or "") and "docs.google.com" not in (u.hostname or ""):
         return None
     m = _DRIVE_ID.search(u.path)
-    if m:
-        return m.group(1)
-    return parse_qs(u.query).get("id", [None])[0]
+    return m.group(1) if m else parse_qs(u.query).get("id", [None])[0]
 
 
 def _sniff(data):
