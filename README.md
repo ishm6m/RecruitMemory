@@ -99,7 +99,7 @@ which candidate each fact came from.
 ### Resume pre-load: memory starts before the interview does
 
 Before the interview, the recruiter can upload the candidate's **resume or
-portfolio** (PDF or plain text). The agent reads it, runs the text through the
+portfolio** (PDF, Word .docx, or plain text). The agent reads it, runs the text through the
 same extraction pipeline, stores each fact tagged `source: resume`, and drafts
 **5-8 interview questions anchored to what the document actually claims** (a
 resume that mentions loom maintenance gets a question probing depth on loom
@@ -114,6 +114,87 @@ sources, resume, live interview, and manual notes, all flowing into the same
 retrieval and decay system.** Every memory carries its source, so "what do we
 know about Karim" draws on resume facts and interview facts together, and
 "where did this come from" has an honest answer.
+
+### Bulk CV upload: batches, because that is how hiring actually works
+
+Recruiters do not receive one CV at a time; a role opens and forty applications
+arrive together. **Bulk upload** takes up to 50 PDF, .docx, or .txt files in one drop,
+processes them one by one through the *same* resume pipeline (no second
+parser), and shows live progress ("12 of 40 processed") while the recruiter
+keeps using the rest of the app.
+
+Nothing is stored during processing. Every file lands on a **review screen
+first, the human-in-the-loop checkpoint**: detected name, role, and a preview
+of key facts per CV, with a status of ready, possible duplicate, or needs
+manual review. A file that cannot be read (a scan with no text, a corrupted or
+mislabeled PDF) is flagged with the reason instead of silently skipped or
+guessed at. A candidate whose name matches, or nearly matches, someone already
+in RecruitMemory or another CV in the same batch is flagged as a possible
+duplicate, and the recruiter decides: add anyway or discard. Only a confirmed
+row becomes a candidate profile, with resume facts stored (`source: resume`)
+and tailored interview questions drafted, exactly like the single upload. The
+same principle as the recording consent gate: **the agent prepares, a human
+approves.**
+
+The same drop zone also accepts a **spreadsheet (.xlsx or .csv)** of applicants,
+because that is often how a batch actually arrives: a sheet of names, phone
+numbers, emails, and links to each candidate's resume (usually Google Drive)
+and portfolio. The columns are **detected by meaning, not exact headers** (so
+"Email", "Contact Email", and "email_address" all resolve), and a column that
+can't be confidently identified is left blank and flagged rather than guessed
+at. For each row, the app best-effort fetches the linked resume and portfolio,
+extracts facts through the same pipeline (`source: resume` and `source:
+portfolio`), and routes everything through the **same review screen**. Every
+fetch is treated as something that can fail, and the outcome is shown plainly
+per row: **ready**, **couldn't access** (a private Drive link or a login wall,
+which is never parsed as if it were the document), **link invalid** (an
+unreachable URL), or **not provided**. A row whose resume link fails is still
+confirmable: it creates a profile with the contact info and a follow-up note to
+fix sharing permissions, rather than blocking the whole import. This is a
+deliberate reliability choice, **surfacing partial success and access failures
+instead of silent gaps**, consistent with the human-in-the-loop principle used
+throughout the app. Sharing permissions vary widely in practice, so the review
+screen tells the recruiter exactly which links came through and which need a
+follow-up, instead of assuming they all worked.
+
+---
+
+## From capture to a hiring pipeline
+
+Memory is the core, but a recruiter lives in a workflow. These additions wrap the
+memory engine in the pipeline an ATS is expected to have, **without changing how
+memory works**: stage, scorecard, and questions live on the candidate record, and
+every recording or note still flows into the same extraction, dedup, and
+belief-update pipeline.
+
+- **Pipeline stages.** Every candidate carries a stage (applied, screening,
+  interview, offer, hired, rejected). Filter the sidebar by stage, change a
+  candidate's stage from the header, and read each candidate's stage as a colored
+  dot. New candidates start at applied.
+- **Structured scorecards.** One click drafts a competency scorecard from what
+  memory holds: 4 to 6 job-relevant competencies, each rated 1 to 5 and grounded in
+  the exact facts behind the rating (0 when the facts give no evidence). **Every
+  citation is verified against the real memory store**, so a rating can never rest
+  on a fact the candidate does not have. The recruiter confirms, overrides, adds, or
+  removes rows, then saves. The same evidence-first stance as the rest of the
+  product: the agent proposes and cites, the human decides.
+- **Shortlist from an answer.** A cross-candidate answer ("who has loom
+  experience?") is no longer a dead end. The candidates it names become a shortlist
+  you can move to any pipeline stage in one click.
+- **Two-voice-aware transcripts.** A live interview transcript interleaves the
+  interviewer's questions and the candidate's answers with no speaker labels, so
+  extraction from a recording is told, in the prompt, to record only what the
+  *candidate* states about themselves, never the interviewer's questions or role
+  requirements. A lightweight stand-in for speaker diarization until the ASR returns
+  speaker turns.
+- **Upload a recording.** Not in the room? Upload an mp3, m4a, or wav of the
+  interview (a phone screen, a video call). The browser decodes and slices it and
+  runs it through the *exact same* transcription and memory pipeline as the live
+  mic, under the same consent gate. No new server code, no new dependency.
+- **Editable questions and .docx resumes.** The AI-drafted interview questions are
+  editable (reorder, reword, add, remove). Resume upload and bulk upload now accept
+  Word (.docx) files alongside PDF and .txt (read with the standard library, still
+  no new dependency).
 
 ---
 
@@ -244,17 +325,25 @@ python backup.py restore  # pull the newest backup back down
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/candidates` | Create a candidate `{name, role}` |
-| `GET`  | `/candidates` | List candidates |
+| `POST` | `/candidates` | Create a candidate `{name, role}` (starts at stage `applied`) |
+| `GET`  | `/candidates` | List candidates (each carries `stage`, `questions`, `scorecard`) |
+| `PUT`  | `/candidates/{id}/stage` | Move a candidate along the hiring pipeline |
 | `POST` | `/candidates/{id}/chat` | Ask (`mode:"ask"`, read-only) or note (`mode:"note"`, also extracts facts) |
 | `GET` | `/candidates/{id}/interviews` | Past interview sessions with transcripts and consent timestamps |
 | `POST` | `/candidates/{id}/reflect` | Synthesize higher-order insights from the raw facts |
+| `POST` | `/candidates/{id}/scorecard/draft` | AI-draft a competency scorecard from memory (citations verified against the store) |
+| `PUT`  | `/candidates/{id}/scorecard` | Save the recruiter-edited scorecard |
+| `PUT`  | `/candidates/{id}/questions` | Save the recruiter-edited interview questions |
 | `GET`  | `/candidates/{id}/memories` | Inspect stored memories (live decayed strength) |
 | `POST` | `/candidates/{id}/interviews` | Start a live interview (requires `{"consent_confirmed": true}`; logs the timestamp) |
 | `POST` | `/interviews/{id}/audio` | Transcribe a ~6s WAV chunk (`{"audio_b64"}`) and extract facts from it |
 | `POST` | `/interviews/{id}/end` | End the interview: flush, decay, reflect, return the transcript |
 | `POST` | `/candidates/{id}/notes` | Typed note (works mid-recording), extraction only, tagged `manual_note` |
-| `POST` | `/candidates/{id}/resume` | Pre-load memory from a resume (`{"file_b64", "filename"}`, PDF/.txt) and draft tailored questions |
+| `POST` | `/candidates/{id}/resume` | Pre-load memory from a resume (`{"file_b64", "filename"}`, PDF/.docx/.txt) and draft tailored questions |
+| `POST` | `/bulk/parse` | Preview one file of a bulk CV batch: name, role, key facts, duplicate flag. Stores nothing |
+| `POST` | `/bulk/spreadsheet` | Parse an `.xlsx`/`.csv` of applicants into rows with detected columns (name, contact, resume/portfolio links). Stores nothing |
+| `POST` | `/bulk/row` | Fetch one spreadsheet row's resume + portfolio links, report each fetch outcome (ok/couldn't access/invalid/none). Stores nothing |
+| `POST` | `/bulk/confirm` | Recruiter-approved row becomes a candidate via the resume pipeline; accepts contact info + fetched portfolio, and confirms even if the resume link failed |
 | `POST` | `/ask` | Ask a question across ALL candidates' memories (query-only) |
 
 ---

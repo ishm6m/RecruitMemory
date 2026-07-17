@@ -165,10 +165,22 @@
                        hover:bg-accent-hover active:scale-[.985] transition-all duration-150">
           <i class="hgi-stroke hgi-add-01 text-16"></i> Add candidate
         </button>
+        <!-- batch intake: many CVs for one role, reviewed before anything is saved -->
+        <button onclick="openBulk()"
+                class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2
+                       text-13 fw-550 text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">
+          <i class="hgi-stroke hgi-file-01 text-14"></i> Bulk upload
+        </button>
       </div>
 
-      <div class="px-4 pt-2 pb-1.5">
+      <div class="px-4 pt-2 pb-1.5 flex items-center gap-2">
         <span class="text-11 text-text-tertiary fw-650 uppercase track-wide">Candidates</span>
+        <!-- pipeline filter: narrow the list to one hiring stage -->
+        <select id="stageFilter" onchange="loadCandidates()" aria-label="Filter candidates by pipeline stage"
+                class="ml-auto bg-surface border border-border rounded-md px-1.5 py-1 text-11 fw-450 text-text-secondary
+                       focus:outline-none focus:border-accent cursor-pointer">
+          <option value="">All stages</option>
+        </select>
       </div>
 
       <!-- candidate list -->
@@ -220,6 +232,14 @@
           <div id="hdrName" class="text-16 sm:text-21 fw-650 track-tight leading-tight truncate">Select a candidate</div>
           <div id="hdrRole" class="text-12 text-text-secondary fw-450 truncate"></div>
         </div>
+        <!-- bulk batch progress while the panel is closed; click to reopen -->
+        <button id="bulkPill" onclick="openBulk()"
+                class="hidden rounded-lg border border-border bg-surface px-2.5 py-1.5 text-13 fw-550
+                       text-text-secondary hover:text-accent hover:border-accent/40 transition-colors shrink-0"></button>
+        <!-- pipeline stage of the selected candidate; changing it moves them -->
+        <select id="hdrStage" onchange="changeStage(this.value)" aria-label="Pipeline stage"
+                class="hidden bg-surface border border-border rounded-lg pl-2.5 pr-1.5 py-1.5 text-13 fw-550
+                       text-text-secondary focus:outline-none focus:border-accent cursor-pointer shrink-0"></select>
         <!-- Primary action: consent-gated live interview capture. -->
         <button id="recBtn" onclick="openInterview()" disabled
                 class="inline-flex items-center gap-1.5 bg-accent text-white fw-550 rounded-lg
@@ -255,7 +275,12 @@
       </div>
 
       <!-- resume/portfolio picker, triggered by the Upload button in the record -->
-      <input type="file" id="resumeFile" accept=".pdf,.txt" class="hidden" onchange="uploadResume(this)" />
+      <input type="file" id="resumeFile" accept=".pdf,.docx,.txt" class="hidden" onchange="uploadResume(this)" />
+      <!-- existing-recording picker (the "Zoom call" path), triggered from the consent gate -->
+      <input type="file" id="ivAudioFile" accept="audio/*" class="hidden" onchange="uploadRecording(this)" />
+      <!-- bulk CV picker, triggered by the drop-zone label in the bulk panel.
+           Accepts CV files AND spreadsheets (.xlsx/.csv) of applicants-with-links. -->
+      <input type="file" id="bulkFiles" accept=".pdf,.docx,.txt,.xlsx,.csv" multiple class="hidden" onchange="bulkPick(this)" />
 
       <!-- compose bar -->
       <div class="shrink-0 px-4 sm:px-6 pb-5 pt-2">
@@ -312,6 +337,18 @@
                              hover:bg-accent-hover active:scale-[.97] transition-all duration-150 disabled:opacity-50">
                 <i class="hgi-stroke hgi-checkmark-circle-02 text-16"></i> Confirm &amp; start recording
               </button>
+            </div>
+            <!-- the "Zoom call" path: upload an existing recording instead of the live mic -->
+            <div class="mt-5 pt-4 border-t border-hairline text-left">
+              <div class="text-12 text-text-secondary fw-450 leading-relaxed mb-2">
+                Not in the room? Upload a recording of this interview and it runs
+                through the same transcription and memory pipeline. The same consent applies.
+              </div>
+              <label for="ivAudioFile"
+                     class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-13 fw-550
+                            cursor-pointer text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">
+                <i class="hgi-stroke hgi-upload-01 text-14"></i> Upload a recording (mp3, m4a, wav)
+              </label>
             </div>
           </div>
         </div>
@@ -372,6 +409,44 @@
           </div>
         </div>
       </div>
+
+      <!-- bulk CV upload overlay: queue, then processing, then human review.
+           Nothing becomes a candidate until the recruiter confirms its row,
+           the same human-in-the-loop checkpoint as the recording consent gate. -->
+      <div id="bulkPanel" class="absolute inset-0 top-16 bg-bg flex flex-col hidden">
+        <div class="h-14 shrink-0 border-b border-border px-4 sm:px-6 flex items-center">
+          <div class="max-w-[820px] mx-auto w-full flex items-center gap-3">
+            <div class="text-15 fw-650 track-tight">Bulk upload</div>
+            <div id="bulkProgress" class="text-13 text-text-secondary fw-450 truncate"></div>
+            <button onclick="closeBulk()" aria-label="Close bulk upload"
+                    class="ml-auto w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary
+                           hover:bg-sidebar transition-colors shrink-0">
+              <i class="hgi-stroke hgi-cancel-01 text-16"></i>
+            </button>
+          </div>
+        </div>
+        <div class="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
+          <div class="max-w-[820px] mx-auto flex flex-col gap-4">
+            <!-- native label opens the picker; no JS click() (browsers can ignore it) -->
+            <label id="bulkDrop" for="bulkFiles"
+                   ondragover="event.preventDefault(); this.classList.add('!border-accent')"
+                   ondragleave="this.classList.remove('!border-accent')"
+                   ondrop="bulkDropped(event)"
+                   class="cursor-pointer border-2 border-dashed border-border rounded-2xl px-6 py-8 text-center
+                          hover:border-accent/50 transition-colors">
+              <i class="hgi-stroke hgi-file-01 text-21 text-accent"></i>
+              <div class="text-14 fw-550 mt-2">Drop CV files or a spreadsheet here, or click to choose</div>
+              <div class="text-12 text-text-secondary fw-450 mt-1 leading-relaxed">
+                CV files (PDF, Word .docx, .txt) or a spreadsheet (.xlsx, .csv) of
+                applicants with resume and portfolio links, up to 50 in one batch.
+                Every row is previewed first; nothing is saved until you confirm it below.
+              </div>
+            </label>
+            <div id="bulkRows" class="flex flex-col gap-2"></div>
+            <div id="bulkActions" class="flex flex-wrap items-center gap-2.5"></div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -384,6 +459,7 @@ let currentCand = null;   // the selected candidate's row (carries .questions)
 let lastResume = null;    // one-line summary of the most recent resume upload
 let sending = false;
 let askMode = true;   // composer mode: Ask (read-only) vs Note (writes to memory)
+let qEditing = false; // suggested-questions section is in its inline edit mode
 let lastSim = null;   // one-line summary of the most recent "advance time" run
 let lastReflect = null;   // one-line summary of the most recent "synthesize insights" run
 let allCandidates = [];        // cached list, reused by the compare picker
@@ -396,6 +472,10 @@ const thread = $('thread');   // Q&A thread inside it (below the record)
 // POST a JSON body; returns the raw Response so callers keep their res.ok checks.
 const postJSON = (url, body) => fetch(url, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+// PUT a JSON body (idempotent updates: stage, scorecard, questions).
+const putJSON = (url, body) => fetch(url, {
+  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 });
 
 // One place that knows how each memory category looks. Earthy, low-saturation, not a rainbow.
@@ -411,9 +491,46 @@ const CATS = {
 const CAT_ORDER = ['insight', 'skill', 'score', 'experience', 'red_flag', 'summary', 'note'];
 const cat = (c) => CATS[c] || CATS.note;
 
+// The hiring pipeline. Order matters (left to right); `rejected` is terminal.
+const STAGES = {
+  applied:   { label: 'Applied',   color: '#A6A39C' },
+  screening: { label: 'Screening', color: '#4A6FA5' },
+  interview: { label: 'Interview', color: '#7A5A8C' },
+  offer:     { label: 'Offer',     color: '#B8860B' },
+  hired:     { label: 'Hired',     color: '#0F6B5C' },
+  rejected:  { label: 'Rejected',  color: '#B4453A' },
+};
+const STAGE_ORDER = ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected'];
+const stg = (s) => STAGES[s] || STAGES.applied;
+
+// Fill both stage <select>s once (the sidebar filter and the header picker).
+function initStageControls() {
+  const filter = $('stageFilter');
+  filter.innerHTML = `<option value="">All stages</option>` +
+    STAGE_ORDER.map(s => `<option value="${s}">${STAGES[s].label}</option>`).join('');
+  $('hdrStage').innerHTML =
+    STAGE_ORDER.map(s => `<option value="${s}">${STAGES[s].label}</option>`).join('');
+}
+
+// Move the selected candidate to a new pipeline stage, then refresh the sidebar.
+async function changeStage(stage) {
+  if (!currentId || currentId === 'all') return;
+  try {
+    const r = await putJSON(`/candidates/${currentId}/stage`, { stage });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (currentCand) currentCand.stage = stage;
+    const c = allCandidates.find(c => c.id === currentId);
+    if (c) c.stage = stage;
+    loadCandidates();
+  } catch (e) {
+    errorRow("Couldn't update the pipeline stage. Is the server running?");
+  }
+}
+
 // Human labels for where a memory came from (the `source` column).
 const SOURCES = {
   manual_note: 'typed note', live_transcript: 'interview', resume: 'resume',
+  portfolio: 'portfolio', spreadsheet: 'spreadsheet import',
   consolidation: 'consolidated', reflection: 'reflection',
 };
 const srcLabel = (s) => SOURCES[s] || '';
@@ -462,7 +579,7 @@ function closeNav()  { $('sidebar').classList.remove('open'); $('navBackdrop').c
 // ---- candidate list (sidebar) ----
 async function loadCandidates() {
   const list = await (await fetch('/candidates')).json();
-  allCandidates = list;   // keep for the compare picker
+  allCandidates = list;   // keep for the compare picker (always the full list)
   const box = $('candList');
   box.innerHTML = '';
   if (!list.length) {
@@ -485,8 +602,19 @@ async function loadCandidates() {
     `<span class="block text-12 leading-tight mt-0.5 ${allActive ? 'text-accent/80' : 'text-text-secondary'} truncate">ask across everyone</span></span>`;
   box.appendChild(allRow);
 
-  for (const c of list) {
+  // Narrow to one pipeline stage if the filter is set (compare picker still sees all).
+  const filter = $('stageFilter').value;
+  const shown = filter ? list.filter(c => (c.stage || 'applied') === filter) : list;
+  if (!shown.length) {
+    box.insertAdjacentHTML('beforeend',
+      `<div class="mx-2 mt-2 px-3 py-3 rounded-lg border border-dashed border-border text-12 text-text-secondary fw-450">` +
+      `No candidates in ${esc(stg(filter).label)} yet.</div>`);
+    return;
+  }
+
+  for (const c of shown) {
     const active = c.id === currentId;
+    const st = stg(c.stage);
     // Row wraps the (full-width) select button plus a hover-reveal delete button,
     // two siblings, never a button inside a button.
     const row = document.createElement('div');
@@ -497,11 +625,15 @@ async function loadCandidates() {
     b.className =
       'w-full text-left rounded-lg pl-2.5 pr-9 py-2 flex items-center gap-2.5 transition-colors duration-150 ' +
       (active ? 'bg-accent-soft text-accent fw-550' : 'text-text-primary hover:bg-surface fw-450');
+    // Meta line always carries the stage as a colored dot; role text when present.
+    const meta =
+      `<span class="cat-dot shrink-0" style="background:${st.color}" title="Stage: ${st.label}"></span>` +
+      `<span class="truncate">${c.role ? esc(c.role) : st.label}</span>`;
     b.innerHTML =
       `<span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${active ? 'bg-accent text-white' : 'bg-surface border border-border text-text-secondary'}">` +
         `<i class="hgi-stroke hgi-user text-14"></i></span>` +
       `<span class="min-w-0"><span class="block text-14 leading-tight truncate">${esc(c.name)}</span>` +
-      (c.role ? `<span class="block text-12 leading-tight mt-0.5 ${active ? 'text-accent/80' : 'text-text-secondary'} truncate">${esc(c.role)}</span>` : '') +
+      `<span class="flex items-center gap-1.5 text-12 leading-tight mt-0.5 ${active ? 'text-accent/80' : 'text-text-secondary'}">${meta}</span>` +
       `</span>`;
 
     const del = document.createElement('button');
@@ -535,6 +667,7 @@ async function deleteCandidate(c) {
       $('hdrName').textContent = 'Select a candidate';
       $('hdrRole').textContent = '';
       $('recBtn').disabled = true;
+      $('hdrStage').classList.add('hidden');
       setComposer(false);
       $('empty').classList.remove('hidden');
     }
@@ -546,9 +679,11 @@ async function deleteCandidate(c) {
 }
 
 function selectCandidate(c) {
-  if (iv) return;   // don't switch candidates while an interview is recording
+  if (iv || ivFile) return;   // don't switch candidates while an interview is capturing
   currentId = c.id;
   currentCand = c;
+  qEditing = false;
+  scWorking = (c.scorecard || []).map(x => ({ ...x, cited: [...(x.cited || [])] }));
   $('interviewPanel').classList.add('hidden');
   lastSim = null;   // reset the time-machine banner for the new candidate
   lastReflect = null;   // reset the reflection banner for the new candidate
@@ -556,6 +691,8 @@ function selectCandidate(c) {
   $('hdrName').textContent = c.name;
   $('hdrRole').textContent = c.role || '';
   $('recBtn').disabled = false;
+  $('hdrStage').value = c.stage || 'applied';
+  $('hdrStage').classList.remove('hidden');
   $('empty').classList.add('hidden');
   thread.innerHTML = '';
   renderRecord();       // the candidate's record IS the page, not a drawer
@@ -571,13 +708,14 @@ function selectCandidate(c) {
 // two or more candidates are ticked). Query-only, so recording is disabled and
 // the Note mode is hidden (notes belong to one candidate).
 function selectAllCandidates() {
-  if (iv) return;
+  if (iv || ivFile) return;
   currentId = 'all';
   currentCand = null;
   $('interviewPanel').classList.add('hidden');
   $('hdrName').textContent = 'All candidates';
   $('hdrRole').textContent = 'ask across every stored memory';
   $('recBtn').disabled = true;
+  $('hdrStage').classList.add('hidden');
   $('empty').classList.add('hidden');
   thread.innerHTML = '';
   renderAllHome();
@@ -780,6 +918,8 @@ async function send() {
           recalledNote(data.recalled.map(m => `${m.candidate}: ${m.fact}`));
         }
         bubble('agent', data.reply);
+        // Act on the answer: move the candidates it named along the pipeline.
+        if (data.recalled && data.recalled.length) shortlistBar(data.recalled);
       }
     } catch (e) {
       think.remove();
@@ -835,6 +975,55 @@ async function send() {
     $('message').focus();
     chat.scrollTop = chat.scrollHeight;
   }
+}
+
+// After a cross-candidate answer, turn the named candidates into an action:
+// tick who to shortlist and move them all to a pipeline stage in one click.
+// Reuses the stage endpoint (feature: pipeline), so the answer isn't a dead end.
+function shortlistBar(recalled) {
+  // distinct candidate names that map to a known candidate id (via the cached list)
+  const seen = new Map();
+  for (const m of recalled) {
+    if (seen.has(m.candidate)) continue;
+    const c = allCandidates.find(x => x.name === m.candidate);
+    if (c) seen.set(m.candidate, c.id);
+  }
+  if (!seen.size) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'chip-in bg-surface border border-border rounded-xl p-3.5';
+  const chips = [...seen.entries()].map(([name, cid]) =>
+    `<label class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-13 fw-450 cursor-pointer hover:border-accent/40 transition-colors">` +
+      `<input type="checkbox" checked data-cid="${cid}" class="accent-accent"> ${esc(name)}</label>`).join('');
+  const opts = STAGE_ORDER.map(s =>
+    `<option value="${s}"${s === 'screening' ? ' selected' : ''}>${STAGES[s].label}</option>`).join('');
+  wrap.innerHTML =
+    `<div class="text-11 fw-650 uppercase track-wide text-text-tertiary mb-2">Shortlist from this answer</div>` +
+    `<div class="flex flex-wrap gap-2 mb-2.5">${chips}</div>` +
+    `<div class="flex flex-wrap items-center gap-2">` +
+      `<span class="text-13 text-text-secondary fw-450">Move selected to</span>` +
+      `<select class="bg-surface border border-border rounded-lg px-2 py-1.5 text-13 fw-550 text-text-secondary focus:outline-none focus:border-accent cursor-pointer">${opts}</select>` +
+      `<button class="inline-flex items-center gap-1.5 bg-accent text-white fw-550 rounded-lg px-3 py-1.5 text-13 hover:bg-accent-hover active:scale-[.97] transition-all duration-150">Apply</button>` +
+    `</div>`;
+  const sel = wrap.querySelector('select');
+  const btn = wrap.querySelector('button');
+  btn.onclick = async () => {
+    const cids = [...wrap.querySelectorAll('input[type=checkbox]:checked')].map(i => Number(i.dataset.cid));
+    if (!cids.length) return;
+    btn.disabled = true; btn.textContent = 'Moving…';
+    try {
+      await Promise.all(cids.map(cid => putJSON(`/candidates/${cid}/stage`, { stage: sel.value })));
+      await loadCandidates();
+      wrap.innerHTML =
+        `<div class="text-13 text-accent fw-450 flex items-center gap-2">` +
+        `<i class="hgi-stroke hgi-checkmark-circle-02 text-14"></i> Moved ${cids.length} ` +
+        `candidate${cids.length === 1 ? '' : 's'} to ${STAGES[sel.value].label}.</div>`;
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Apply';
+      errorRow("Couldn't move those candidates. Is the server running?");
+    }
+  };
+  thread.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 // ---- stored-memories drawer ----
@@ -986,14 +1175,18 @@ function renderCompare(d) {
 // The file goes up as base64 JSON (same transport as audio chunks). The server
 // extracts the text, runs the SAME extraction pipeline (source=resume), then
 // drafts interview questions from everything memory now holds.
+let resumeUploading = false;
 async function uploadResume(input) {
   const file = input.files && input.files[0];
   input.value = '';   // allow re-picking the same file later
-  if (!file || !currentId || currentId === 'all' || iv) return;
+  if (!file || !currentId || currentId === 'all' || iv || resumeUploading) return;
+  resumeUploading = true;
   const cid = currentId;
   const btn = $('resumeBtn');
   if (btn) {
-    btn.disabled = true;
+    // label ignores .disabled, so block re-clicks via pointer-events instead
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.6';
     btn.innerHTML = `<span class="pulse-dot"></span> Reading ${esc(file.name)}… extracting facts and drafting questions`;
   }
   try {
@@ -1012,6 +1205,8 @@ async function uploadResume(input) {
     await renderRecord();   // restore the upload button from its loading state
     errorRow(/^HTTP|^Failed/.test(e.message)
       ? "Couldn't upload that file. Is the server running?" : e.message);
+  } finally {
+    resumeUploading = false;
   }
 }
 
@@ -1020,6 +1215,153 @@ function resumeBanner() {
   if (!lastResume) return '';
   return `<div class="chip-in flex items-center gap-2 bg-accent-soft text-accent rounded-lg px-3 py-2 text-13 fw-450 mb-5">` +
          `<i class="hgi-stroke hgi-file-01 text-14"></i> ${esc(lastResume)}</div>`;
+}
+
+// ---- scorecard: competencies scored 1-5, AI-drafted from memory, human-confirmed ----
+// The AI proposes each rating and cites the exact facts behind it (mechanism 2
+// applied to structured evaluation); the recruiter confirms, overrides, adds, or
+// removes rows, then saves. scWorking is the live editable copy for the selection.
+let scWorking = [];
+
+function scInner() {
+  const rows = scWorking.map((row, i) => scRowHtml(row, i)).join('');
+  return (
+    `<div class="flex items-center gap-2 pb-1.5 mb-2 border-b border-hairline">` +
+      `<span class="text-11 fw-650 uppercase track-wide text-text-tertiary">Scorecard</span>` +
+      (scWorking.length ? `<span class="text-11 text-text-tertiary fw-550">${scWorking.length}</span>` : '') +
+      `<button id="scDraftBtn" onclick="draftScorecard()"` +
+        ` class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-12 fw-550` +
+        ` text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">` +
+        `<i class="hgi-stroke hgi-chart-average text-13"></i> ${scWorking.length ? 'Redraft from memory' : 'Draft from memory'}</button>` +
+    `</div>` +
+    (scWorking.length
+      ? `<div class="flex flex-col gap-2.5">${rows}</div>` +
+        `<div class="flex flex-wrap items-center gap-2 mt-3">` +
+          `<input id="scAddInput" placeholder="Add a competency…" onkeydown="if(event.key==='Enter')scAdd()"` +
+            ` class="flex-1 min-w-[160px] bg-surface border border-border rounded-lg px-3 py-1.5 text-13 fw-450` +
+            ` placeholder:text-text-tertiary focus:outline-none focus:border-accent transition-colors" />` +
+          `<button onclick="scAdd()" class="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5` +
+            ` text-12 fw-550 text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">` +
+            `<i class="hgi-stroke hgi-add-01 text-13"></i> Add</button>` +
+          `<button id="scSaveBtn" onclick="saveScorecard()" class="inline-flex items-center gap-1.5 bg-accent text-white fw-550 rounded-lg` +
+            ` px-3 py-1.5 text-13 hover:bg-accent-hover active:scale-[.97] transition-all duration-150">Save scorecard</button>` +
+        `</div>`
+      : `<div class="text-13 text-text-secondary fw-450 leading-relaxed py-1">No scorecard yet. Draft one from what memory` +
+        ` holds, then confirm or adjust each rating. Every AI rating cites the exact facts behind it.</div>`)
+  );
+}
+
+function scRowHtml(row, i) {
+  const pips = [1, 2, 3, 4, 5].map(n =>
+    `<button onclick="scRate(${i},${n})" aria-label="Rate ${n} of 5" title="${n} of 5"` +
+    ` class="w-4 h-4 rounded-full transition-colors" style="background:${n <= (row.rating || 0) ? '#0F6B5C' : '#E9E8E5'}"></button>`
+  ).join('');
+  const cited = (row.cited || []).length
+    ? `<details class="mt-1.5"><summary class="list-none cursor-pointer text-11 text-text-tertiary fw-450 hover:text-text-secondary">` +
+        `${row.cited.length} cited fact${row.cited.length === 1 ? '' : 's'}</summary>` +
+      `<ul class="mt-1 ml-0.5 flex flex-col gap-1 border-l border-hairline pl-2.5">` +
+        row.cited.map(f => `<li class="text-11 text-text-secondary fw-450">${esc(f)}</li>`).join('') +
+      `</ul></details>`
+    : '';
+  return `<div class="bg-surface border border-border rounded-xl px-3.5 py-2.5">` +
+    `<div class="flex items-center gap-2.5">` +
+      `<span class="min-w-0 flex-1 text-14 fw-550 truncate">${esc(row.competency)}</span>` +
+      (row.ai_suggested ? `<span class="text-11 text-text-tertiary fw-450 shrink-0" title="Rating proposed by the AI from memory">AI</span>` : '') +
+      `<span class="flex items-center gap-1 shrink-0">${pips}</span>` +
+      `<button onclick="scRemove(${i})" aria-label="Remove competency"` +
+        ` class="w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-danger transition-colors shrink-0">` +
+        `<i class="hgi-stroke hgi-delete-02 text-13"></i></button>` +
+    `</div>` +
+    `<textarea rows="2" oninput="scNote(${i},this.value)" placeholder="Notes / rationale…"` +
+      ` class="w-full mt-1.5 bg-transparent text-13 fw-450 text-text-secondary leading-relaxed` +
+      ` placeholder:text-text-tertiary focus:outline-none resize-none">${esc(row.rationale || '')}</textarea>` +
+    cited +
+  `</div>`;
+}
+
+function scSectionEl() {
+  const sec = document.createElement('div');
+  sec.className = 'mb-6';
+  sec.id = 'scSection';
+  sec.innerHTML = scInner();
+  return sec;
+}
+// Re-render only the scorecard (rating clicks, add/remove) without a full record
+// reload, so unsaved edits and input focus elsewhere are preserved.
+function scRefresh() { const s = $('scSection'); if (s) s.innerHTML = scInner(); }
+
+function scRate(i, n) {
+  const r = scWorking[i];
+  r.rating = (r.rating === n ? 0 : n);   // click the current rating to clear it
+  r.ai_suggested = false;                // a human touched it now
+  scRefresh();
+}
+function scNote(i, v) { scWorking[i].rationale = v; }   // data only, no re-render (keep focus)
+function scRemove(i) { scWorking.splice(i, 1); scRefresh(); }
+function scAdd() {
+  const inp = $('scAddInput');
+  const name = inp && inp.value.trim();
+  if (!name) return;
+  scWorking.push({ competency: name, rating: 0, rationale: '', cited: [], ai_suggested: false });
+  scRefresh();
+  const ni = $('scAddInput'); if (ni) ni.focus();
+}
+
+async function draftScorecard() {
+  if (!currentId || currentId === 'all' || iv) return;
+  const btn = $('scDraftBtn');
+  if (btn) { btn.style.pointerEvents = 'none'; btn.innerHTML = `<span class="pulse-dot"></span> Drafting from memory…`; }
+  try {
+    const r = await postJSON(`/candidates/${currentId}/scorecard/draft`, {});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    scWorking = (d.scorecard || []).map(x => ({ ...x, cited: [...(x.cited || [])] }));
+    if (currentCand) currentCand.scorecard = scWorking;
+    scRefresh();
+    if (!scWorking.length) errorRow('No memories to score yet. Add facts, record an interview, or upload a resume first.');
+  } catch (e) {
+    scRefresh();
+    errorRow(/^HTTP|^Failed/.test(e.message) ? "Couldn't draft the scorecard. Is the server running?" : e.message);
+  }
+}
+
+async function saveScorecard() {
+  if (!currentId || currentId === 'all') return;
+  const btn = $('scSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await putJSON(`/candidates/${currentId}/scorecard`, { scorecard: scWorking });
+    const d = await r.json();
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    scWorking = (d.scorecard || []).map(x => ({ ...x, cited: [...(x.cited || [])] }));
+    if (currentCand) currentCand.scorecard = scWorking;
+    scRefresh();
+  } catch (e) {
+    scRefresh();
+    errorRow("Couldn't save the scorecard. Is the server running?");
+  }
+}
+
+// ---- editable interview questions ----
+// The AI drafts questions from a resume; the recruiter makes them their own.
+// A textarea (one question per line) is the whole editor: typing reorders, adds,
+// and removes in one control. ponytail: newline list beats a per-row widget.
+function editQuestions() { qEditing = true; renderRecord(); }
+function cancelQuestions() { qEditing = false; renderRecord(); }
+async function saveQuestions() {
+  const ta = $('qEdit');
+  if (!ta || !currentId || currentId === 'all') return;
+  const qs = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+  try {
+    const r = await putJSON(`/candidates/${currentId}/questions`, { questions: qs });
+    const d = await r.json();
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (currentCand) currentCand.questions = d.questions;
+    qEditing = false;
+    renderRecord();
+  } catch (e) {
+    errorRow("Couldn't save the questions. Is the server running?");
+  }
 }
 
 // ---- the candidate record: what we remember + past interviews, as the page ----
@@ -1054,29 +1396,52 @@ async function renderRecord() {
   prep.className = 'mb-6';
   prep.innerHTML =
     `<div class="flex items-center gap-2.5 flex-wrap">` +
-      `<button id="resumeBtn" onclick="$('resumeFile').click()"` +
-        ` class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-13 fw-550` +
-        ` text-text-secondary hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-60">` +
-        `<i class="hgi-stroke hgi-file-01 text-14"></i> ${qs.length ? 'Upload another resume' : 'Upload resume / portfolio'}</button>` +
-      `<span class="text-12 text-text-tertiary fw-450">PDF or .txt · pre-loads memory and drafts tailored interview questions</span>` +
+      `<label id="resumeBtn" for="resumeFile"` +
+        ` class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-13 fw-550 cursor-pointer` +
+        ` text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">` +
+        `<i class="hgi-stroke hgi-file-01 text-14"></i> ${qs.length ? 'Upload another resume' : 'Upload resume / portfolio'}</label>` +
+      `<span class="text-12 text-text-tertiary fw-450">PDF, .docx, or .txt · pre-loads memory and drafts tailored interview questions</span>` +
     `</div>`;
   box.appendChild(prep);
 
-  // -- suggested questions (drafted after a resume upload, kept on the record) --
-  if (qs.length) {
+  // -- suggested questions (drafted from a resume, editable, kept on the record) --
+  if (qEditing) {
+    const qSec = document.createElement('div');
+    qSec.className = 'mb-6';
+    qSec.innerHTML =
+      `<div class="flex items-center gap-2 pb-1.5 mb-2 border-b border-hairline">` +
+        `<span class="text-11 fw-650 uppercase track-wide text-text-tertiary">Edit questions</span>` +
+        `<span class="text-11 text-text-tertiary fw-450 ml-auto">one per line; reorder, add, or remove</span>` +
+      `</div>` +
+      `<textarea id="qEdit" rows="${Math.max(4, qs.length + 1)}"` +
+        ` class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-14 fw-450 leading-relaxed` +
+        ` focus:outline-none focus:border-accent transition-colors">${esc(qs.join('\n'))}</textarea>` +
+      `<div class="flex items-center gap-2 mt-2">` +
+        `<button onclick="saveQuestions()" class="inline-flex items-center gap-1.5 bg-accent text-white fw-550 rounded-lg` +
+          ` px-3 py-1.5 text-13 hover:bg-accent-hover active:scale-[.97] transition-all duration-150">Save questions</button>` +
+        `<button onclick="cancelQuestions()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-13 fw-550` +
+          ` text-text-secondary hover:bg-sidebar transition-colors">Cancel</button>` +
+      `</div>`;
+    box.appendChild(qSec);
+  } else if (qs.length) {
     const qSec = document.createElement('div');
     qSec.className = 'mb-6';
     qSec.innerHTML =
       `<div class="flex items-center gap-2 pb-1.5 mb-1 border-b border-hairline">` +
         `<span class="text-11 fw-650 uppercase track-wide text-text-tertiary">Suggested questions</span>` +
         `<span class="text-11 text-text-tertiary fw-550">${qs.length}</span>` +
-        `<span class="text-11 text-text-tertiary fw-450 ml-auto">a reference for the interview, not a script</span>` +
+        `<button onclick="editQuestions()" class="ml-auto inline-flex items-center gap-1 text-11 fw-550` +
+          ` text-text-tertiary hover:text-accent transition-colors">` +
+          `<i class="hgi-stroke hgi-pencil-edit-02 text-13"></i> Edit</button>` +
       `</div>` +
       `<ol class="list-decimal ml-5 mt-1.5 flex flex-col gap-1.5">` +
       qs.map(q => `<li class="text-14 fw-450 leading-relaxed pl-1">${esc(q)}</li>`).join('') +
       `</ol>`;
     box.appendChild(qSec);
   }
+
+  // -- scorecard: AI-drafted from memory, human-confirmed --
+  box.appendChild(scSectionEl());
 
   // -- what we remember --
   const memSec = document.createElement('div');
@@ -1167,7 +1532,7 @@ const SLICE_MS = 6000;
 const OVERLAP_MS = 1500;
 
 function openInterview() {
-  if (!currentId || currentId === 'all' || iv) return;
+  if (!currentId || currentId === 'all' || iv || ivFile) return;
   $('ivConsentErr').classList.add('hidden');
   $('ivConsentName').textContent = $('hdrName').textContent;
   $('ivConsentName2').textContent = $('hdrName').textContent;
@@ -1463,12 +1828,435 @@ async function endInterview() {
   };
 }
 
+// ---- upload an existing recording (the "Zoom call" path) ----
+// Reuses the whole live pipeline: the browser decodes the file (mp3/m4a/wav via
+// Web Audio), slices it into the same overlapped 6s chunks, and posts each to the
+// SAME /audio endpoint, so an uploaded recording and a live mic produce identical
+// memory. No server change, no new dependency.
+// ponytail: chunk timestamps track processing order, not the recording clock;
+// fine for an ordered transcript. Add real offsets only if it ever matters.
+let ivFile = null;   // { id, cancelled } while a recording is being processed
+
+async function uploadRecording(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !currentId || currentId === 'all' || iv || ivFile) return;
+  const cbtn = $('ivConfirmBtn');
+  cbtn.disabled = true;
+  $('ivConsentErr').classList.add('hidden');
+  try {
+    // consent gate: creating the interview logs the consent timestamp, exactly
+    // as the mic path does, before any audio is processed.
+    const r = await postJSON(`/candidates/${currentId}/interviews`, { consent_confirmed: true });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rec = await r.json();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const audio = await ctx.decodeAudioData(await file.arrayBuffer());
+    ctx.close();
+    runFileInterview(rec.id, file.name, audio);
+  } catch (e) {
+    const err = $('ivConsentErr');
+    err.textContent = "Couldn't read that audio file. Try an mp3, m4a, or wav.";
+    err.classList.remove('hidden');
+  } finally {
+    cbtn.disabled = false;
+  }
+}
+
+async function runFileInterview(id, filename, audio) {
+  ivFile = { id, cancelled: false };
+  ivStartMs = Date.now();
+  ivFactCount = 0;
+  $('sidebar').classList.add('rec-lock');   // lock the app like a live recording
+  $('recBtn').disabled = true;
+  $('ivNoteRow').classList.add('hidden');
+  $('ivQsWrap').classList.add('hidden');
+  $('ivTranscript').innerHTML =
+    `<div class="text-13 text-text-tertiary fw-450 italic">Transcribing ${esc(filename)}…</div>`;
+  $('ivFacts').innerHTML =
+    `<div id="ivFactsHint" class="text-13 text-text-tertiary fw-450 italic">Facts from the recording will slide in here.</div>`;
+  const endBtn = $('ivEndBtn');
+  endBtn.disabled = false;
+  endBtn.classList.replace('bg-accent', 'bg-danger');
+  endBtn.innerHTML = `<i class="hgi-stroke hgi-stop text-14"></i> Stop`;
+  endBtn.onclick = () => { if (ivFile) ivFile.cancelled = true; };
+  $('ivStatus').innerHTML =
+    `<i class="hgi-stroke hgi-file-01 text-16 text-accent"></i> Processing recording ` +
+    `<span id="ivFileProg" class="font-mono text-13 text-text-secondary fw-450"></span>`;
+  $('ivConsent').classList.add('hidden');
+  $('ivLive').classList.remove('hidden');
+
+  // slice the decoded audio into overlapped 6s chunks and post them in order
+  const rate = audio.sampleRate;
+  const data = audio.getChannelData(0);
+  const sliceLen = Math.floor(rate * SLICE_MS / 1000);
+  const overlapLen = Math.floor(rate * OVERLAP_MS / 1000);
+  const starts = [];
+  for (let s = 0; s < data.length; s += sliceLen) starts.push(s);
+  for (let i = 0; i < starts.length; i++) {
+    if (ivFile.cancelled) break;
+    const prog = $('ivFileProg');
+    if (prog) prog.textContent = `chunk ${i + 1} of ${starts.length}`;
+    const from = starts[i] === 0 ? 0 : starts[i] - overlapLen;
+    const to = Math.min(data.length, starts[i] + sliceLen);
+    const chunk = data.subarray(from, to);
+    if (!hasSpeech(chunk, rate)) continue;
+    await postChunk(id, encodeWav(chunk, rate));   // sequential: order + live transcript
+  }
+  await endFileInterview(id);
+}
+
+async function endFileInterview(id) {
+  let bits = '';
+  try {
+    const r = await fetch(`/interviews/${id}/end`, { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    appendLiveFacts(d.new_facts || []);
+    const ins = (d.insights || []).length;
+    bits = ` · ${ivFactCount} memor${ivFactCount === 1 ? 'y' : 'ies'} formed` +
+           (ins ? ` · ${ins} insight${ins === 1 ? '' : 's'}` : '');
+    $('ivStatus').innerHTML =
+      `<i class="hgi-stroke hgi-checkmark-circle-02 text-16 text-accent"></i> Recording processed` +
+      `<span class="text-13 text-text-secondary fw-450">${bits}</span>`;
+  } catch (e) {
+    $('ivStatus').innerHTML =
+      `<span class="text-danger text-13 fw-450">Couldn't finish cleanly, but all facts up to now are stored.</span>`;
+  }
+  ivFile = null;
+  $('sidebar').classList.remove('rec-lock');
+  $('recBtn').disabled = false;
+  const btn = $('ivEndBtn');
+  btn.disabled = false;
+  btn.classList.replace('bg-danger', 'bg-accent');
+  btn.innerHTML = `<i class="hgi-stroke hgi-user text-14"></i> View record`;
+  btn.onclick = () => { $('interviewPanel').classList.add('hidden'); renderRecord(); };
+}
+
 // escape user/model text before putting it in innerHTML
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// ---- bulk upload (CV files OR a spreadsheet; nothing stored until confirmed) ----
+const BULK_MAX_FILES = 50;
+// Each row is kind 'file' (a dropped CV) or 'sheet' (one applicant row from an
+// uploaded .xlsx/.csv, carrying contact info + resume/portfolio fetch statuses).
+let bulkRows = [];       // {kind, file?, status, name, role, facts, text, reason, adding, ...sheet fields}
+let bulkRunning = false; // one batch at a time
+let bulkSheetNote = '';  // e.g. which spreadsheet columns couldn't be detected
+
+const BULK_STATUS = {
+  queued:     { label: 'queued',             color: '#A6A39C' },
+  processing: { label: 'reading',            color: '#4A6FA5' },
+  ok:         { label: 'ready',              color: '#0F6B5C' },
+  review:     { label: 'needs review',       color: '#B8860B' },
+  duplicate:  { label: 'possible duplicate', color: '#B8860B' },
+  failed:     { label: 'needs manual review', color: '#B4453A' },
+  added:      { label: 'added',              color: '#0F6B5C' },
+  discarded:  { label: 'discarded',          color: '#A6A39C' },
+};
+
+// Per-link outcome for a spreadsheet row's resume/portfolio fetch. A failed
+// fetch is shown plainly here so the recruiter decides what to do; it never
+// blocks the row.
+const SHEET_STATUS = {
+  ok:        { label: 'ready',             color: '#0F6B5C' },
+  no_access: { label: "couldn't access",   color: '#B4453A' },
+  invalid:   { label: 'link invalid',      color: '#B4453A' },
+  none:      { label: 'not provided',      color: '#A6A39C' },
+  '':        { label: 'pending',           color: '#A6A39C' },
+};
+function sheetStatusPill(label, status) {
+  const s = SHEET_STATUS[status] || SHEET_STATUS[''];
+  return `<span class="text-11 fw-550 px-1.5 py-0.5 rounded" ` +
+         `style="color:${s.color};background:${s.color}14">${label}: ${s.label}</span>`;
+}
+
+function openBulk() { closeNav(); $('bulkPanel').classList.remove('hidden'); renderBulk(); }
+function closeBulk() {
+  $('bulkPanel').classList.add('hidden');
+  // a fully settled batch is over; drop it so the next open starts clean
+  if (!bulkRunning && bulkRows.length &&
+      bulkRows.every((r) => r.status === 'added' || r.status === 'discarded')) {
+    bulkRows = [];
+    bulkSheetNote = '';
+  }
+  updateBulkPill();
+}
+
+// header pill: batch progress while the panel is closed, click to reopen
+function updateBulkPill() {
+  const pill = $('bulkPill');
+  const open = !$('bulkPanel').classList.contains('hidden');
+  if (open || !bulkRows.length) { pill.classList.add('hidden'); return; }
+  const total = bulkRows.length;
+  const pending = bulkRows.filter((r) => r.status === 'queued' || r.status === 'processing').length;
+  pill.textContent = bulkRunning ? `CVs ${total - pending} of ${total}` : 'Review CVs';
+  pill.classList.remove('hidden');
+}
+
+// A spreadsheet expands into many candidate rows; a CV file is one row. Both
+// end up in the same queue and the same review screen.
+function bulkAddFiles(files) {
+  for (const f of files) {
+    if (bulkRows.length >= BULK_MAX_FILES) {
+      alert(`Up to ${BULK_MAX_FILES} rows per batch. The rest were not added.`);
+      break;
+    }
+    if (/\.(xlsx|csv)$/i.test(f.name)) { bulkAddSpreadsheet(f); continue; }
+    bulkRows.push({ kind: 'file', file: f, status: 'queued' });
+  }
+  renderBulk();
+}
+
+// Friendly names for the spreadsheet field keys the server detects.
+const SHEET_FIELD = { name: 'name', email: 'email', phone: 'phone',
+                      resume_url: 'resume link', portfolio_url: 'portfolio link' };
+
+// Parse an uploaded spreadsheet into candidate rows (server detects the columns);
+// each becomes a queued 'sheet' row processed like a CV, but by fetching links.
+async function bulkAddSpreadsheet(file) {
+  try {
+    const res = await postJSON('/bulk/spreadsheet',
+      { file_b64: await fileB64(file), filename: file.name });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'HTTP ' + res.status);
+    if (!d.rows.length) { alert(`No candidate rows found in ${file.name}.`); return; }
+    bulkSheetNote = (d.unmapped || []).length
+      ? `Columns not detected in ${file.name}: ${d.unmapped.map((f) => SHEET_FIELD[f] || f).join(', ')}. Those fields are left blank; fill them in before adding if needed.`
+      : '';
+    for (const r of d.rows) {
+      if (bulkRows.length >= BULK_MAX_FILES) {
+        alert(`Up to ${BULK_MAX_FILES} rows per batch. The rest were not added.`);
+        break;
+      }
+      bulkRows.push({ kind: 'sheet', status: 'queued', name: r.name, email: r.email,
+                      phone: r.phone, resume_url: r.resume_url, portfolio_url: r.portfolio_url });
+    }
+    renderBulk();
+  } catch (e) {
+    alert(`Couldn't read ${file.name}: ${e.message}`);
+  }
+}
+
+function bulkPick(input) { bulkAddFiles(input.files); input.value = ''; }
+function bulkDropped(e) {
+  e.preventDefault();
+  $('bulkDrop').classList.remove('!border-accent');
+  bulkAddFiles(e.dataTransfer.files);
+}
+function bulkRemove(i)  { bulkRows.splice(i, 1); renderBulk(); }
+function bulkDiscard(i) { bulkRows[i].status = 'discarded'; renderBulk(); }
+
+const fileB64 = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result.split(',')[1]);
+  r.onerror = () => reject(new Error("couldn't read that file from disk"));
+  r.readAsDataURL(file);
+});
+
+// A dropped CV file: preview its text (server stores nothing).
+async function bulkProcessFile(row, batchNames) {
+  const res = await postJSON('/bulk/parse',
+    { file_b64: await fileB64(row.file), filename: row.file.name, batch_names: batchNames });
+  const d = await res.json();
+  if (!res.ok) throw new Error(d.detail || 'HTTP ' + res.status);
+  Object.assign(row, { name: d.name, role: d.role, facts: d.facts, text: d.text });
+  return d;
+}
+
+// A spreadsheet row: the server fetches its resume + portfolio links and reports
+// what each fetch did. The fetched text rides back for /bulk/confirm.
+async function bulkProcessSheet(row, batchNames) {
+  const res = await postJSON('/bulk/row', {
+    name: row.name || '', email: row.email || '', phone: row.phone || '',
+    resume_url: row.resume_url || '', portfolio_url: row.portfolio_url || '',
+    batch_names: batchNames });
+  const d = await res.json();
+  if (!res.ok) throw new Error(d.detail || 'HTTP ' + res.status);
+  Object.assign(row, { name: d.name, role: d.role, facts: d.facts, text: d.resume_text,
+    portfolio_text: d.portfolio_text, resume_status: d.resume_status,
+    portfolio_status: d.portfolio_status, email: d.email, phone: d.phone });
+  return d;
+}
+
+// One row at a time (preview only, server stores nothing). Files dropped in
+// while this runs are picked up by the same loop.
+// ponytail: sequential keeps order and load obvious; parallelize if batches drag.
+async function bulkProcess() {
+  if (bulkRunning) return;
+  bulkRunning = true;
+  renderBulk();
+  for (const row of bulkRows) {
+    if (row.status !== 'queued') continue;
+    row.status = 'processing';
+    renderBulk();
+    try {
+      // names parsed so far in this batch, so the server's fuzzy duplicate
+      // check also catches two rows of the same person inside one batch
+      const batchNames = bulkRows
+        .filter((r) => r !== row && r.name && r.status !== 'discarded')
+        .map((r) => r.name);
+      const d = row.kind === 'sheet'
+        ? await bulkProcessSheet(row, batchNames)
+        : await bulkProcessFile(row, batchNames);
+      if (d.duplicate_of) {
+        row.status = 'duplicate';
+        row.reason = d.duplicate_of.id != null
+          ? `Looks like ${esc(d.duplicate_of.name)}, who is already in RecruitMemory. Add anyway or discard.`
+          : `Looks like the same person as ${esc(d.duplicate_of.name)} in this batch. Add anyway or discard.`;
+      } else if (!row.name) {
+        row.status = 'review';
+        row.reason = row.kind === 'sheet'
+          ? 'No name for this row, and none found in the linked files. Add a name before confirming.'
+          : 'No candidate name found in the file, so the filename is used. Check it before adding.';
+      } else if (row.kind !== 'sheet' && d.name_guessed) {
+        row.status = 'review';
+        row.reason = 'No candidate name found in the file, so the filename is used. Check it before adding.';
+      } else {
+        // A sheet row stays confirmable even if a link failed: partial success is
+        // normal, not an error. The failed fetch is surfaced as its own status.
+        row.status = 'ok';
+      }
+    } catch (e) {
+      row.status = 'failed';
+      row.reason = /^HTTP|^Failed/.test(e.message)
+        ? "Couldn't reach the server for this row." : e.message;
+    }
+    renderBulk();
+  }
+  bulkRunning = false;
+  renderBulk();
+}
+
+// The human checkpoint: only a confirmed row becomes a real candidate,
+// through the same resume pipeline as the single upload.
+async function bulkConfirm(i) {
+  const row = bulkRows[i];
+  // A CV row needs parsed text; a sheet row is confirmable even with no resume
+  // text (partial success), as long as it has contact info or a portfolio.
+  if (!row || row.adding) return;
+  if (row.kind !== 'sheet' && !row.text) return;
+  row.adding = true;
+  renderBulk();
+  try {
+    const payload = row.kind === 'sheet'
+      ? { name: row.name, role: row.role || '', text: row.text || '',
+          email: row.email || '', phone: row.phone || '',
+          portfolio_text: row.portfolio_text || '', resume_status: row.resume_status || '' }
+      : { name: row.name, role: row.role || '', text: row.text };
+    const res = await postJSON('/bulk/confirm', payload);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'HTTP ' + res.status);
+    row.status = 'added';
+    row.reason = '';
+    await loadCandidates();   // the new profile appears in the sidebar
+  } catch (e) {
+    row.status = 'failed';
+    row.reason = /^HTTP|^Failed/.test(e.message)
+      ? "Couldn't reach the server; this candidate was not added." : e.message;
+  }
+  row.adding = false;
+  renderBulk();
+}
+
+async function bulkConfirmAll() {
+  for (let i = 0; i < bulkRows.length; i++) {
+    if (bulkRows[i].status === 'ok') await bulkConfirm(i);
+  }
+}
+
+function bulkRowEl(r, i) {
+  const s = BULK_STATUS[r.status];
+  const el = document.createElement('div');
+  el.className = 'bg-surface border border-border rounded-xl px-4 py-3' +
+    (r.status === 'discarded' ? ' opacity-50' : '');
+  const btnCls = (accent) =>
+    'inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-12 fw-550 transition-colors ' +
+    (accent ? 'bg-accent text-white hover:bg-accent-hover'
+            : 'border border-border text-text-secondary hover:text-danger hover:border-danger/40') +
+    (r.adding ? ' opacity-50 pointer-events-none' : '');
+  let actions = '';
+  if (r.status === 'queued' && !bulkRunning)
+    actions = `<button onclick="bulkRemove(${i})" class="${btnCls(false)}">Remove</button>`;
+  if (r.status === 'ok' || r.status === 'duplicate' || r.status === 'review')
+    actions =
+      `<button onclick="bulkConfirm(${i})" class="${btnCls(true)}">` +
+        (r.adding ? '<span class="pulse-dot"></span> Adding' : (r.status === 'duplicate' ? 'Add anyway' : 'Add')) + `</button>` +
+      `<button onclick="bulkDiscard(${i})" class="${btnCls(false)}">Discard</button>`;
+  if (r.status === 'failed')
+    actions = `<button onclick="bulkDiscard(${i})" class="${btnCls(false)}">Discard</button>`;
+
+  const isSheet = r.kind === 'sheet';
+  const title = esc(r.name || (isSheet ? '(no name in row)' : r.file.name));
+  // CV rows show the source filename; sheet rows show contact info, then a
+  // resume/portfolio status line once they've been processed.
+  const contact = isSheet ? [r.email, r.phone].filter(Boolean).map(esc).join(' · ') : '';
+  const subLine = isSheet
+    ? (contact ? `<div class="text-12 text-text-tertiary fw-450 mt-1 truncate">${contact}</div>` : '')
+    : (r.name ? `<div class="text-12 text-text-tertiary fw-450 mt-1 truncate">${esc(r.file.name)}</div>` : '');
+  const statusLine = isSheet && r.status !== 'queued' && r.status !== 'processing'
+    ? `<div class="flex flex-wrap items-center gap-1.5 mt-1.5">` +
+        sheetStatusPill('resume', r.resume_status) + sheetStatusPill('portfolio', r.portfolio_status) +
+      `</div>` : '';
+
+  el.innerHTML =
+    `<div class="flex items-center gap-2.5 min-w-0">` +
+      `<span class="text-11 fw-650 uppercase track-wide px-1.5 py-0.5 rounded shrink-0" ` +
+            `style="color:${s.color};background:${s.color}18">${s.label}</span>` +
+      (r.status === 'processing' ? '<span class="pulse-dot shrink-0"></span>' : '') +
+      `<span class="text-14 fw-550 truncate">${title}</span>` +
+      (r.role ? `<span class="text-12 text-text-secondary fw-450 truncate hidden sm:inline">${esc(r.role)}</span>` : '') +
+      `<span class="ml-auto flex items-center gap-1.5 shrink-0">${actions}</span>` +
+    `</div>` +
+    subLine +
+    statusLine +
+    ((r.facts || []).length
+      ? `<div class="text-13 text-text-secondary fw-450 mt-1.5 leading-relaxed">${r.facts.map(esc).join(' · ')}</div>` : '') +
+    (r.reason && r.status !== 'added'
+      ? `<div class="text-12 fw-450 mt-1.5" style="color:${s.color}">${r.reason}</div>` : '');
+  return el;
+}
+
+function renderBulk() {
+  const box = $('bulkRows');
+  box.innerHTML = '';
+  if (bulkSheetNote) {
+    const note = document.createElement('div');
+    note.className = 'text-12 text-text-secondary fw-450 bg-surface border border-border rounded-lg px-3 py-2';
+    note.textContent = bulkSheetNote;
+    box.appendChild(note);
+  }
+  bulkRows.forEach((r, i) => box.appendChild(bulkRowEl(r, i)));
+
+  const total = bulkRows.length;
+  const pending = bulkRows.filter((r) => r.status === 'queued').length;
+  const inFlight = bulkRows.some((r) => r.status === 'processing');
+  const processed = total - pending - (inFlight ? 1 : 0);
+  $('bulkProgress').textContent =
+    bulkRunning ? `${processed} of ${total} processed` :
+    total ? `${total} row${total === 1 ? '' : 's'}` : '';
+
+  const ready = bulkRows.filter((r) => r.status === 'ok').length;
+  let html = '';
+  if (pending && !bulkRunning)
+    html += `<button onclick="bulkProcess()" class="inline-flex items-center gap-1.5 bg-accent text-white fw-550 rounded-lg
+                     px-3.5 py-2 text-14 hover:bg-accent-hover active:scale-[.97] transition-all duration-150">
+               Process ${pending} row${pending === 1 ? '' : 's'}</button>`;
+  if (ready && !bulkRunning)
+    html += `<button onclick="bulkConfirmAll()" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface
+                     px-3.5 py-2 text-14 fw-550 text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">
+               Add all ready (${ready})</button>`;
+  if (bulkRunning)
+    html += `<span class="text-13 text-text-secondary fw-450">You can close this panel and keep working;
+             progress stays in the header and you review everything when it finishes.</span>`;
+  $('bulkActions').innerHTML = html;
+  updateBulkPill();
+}
+
+initStageControls();
 setMode(true);
 loadCandidates();
 </script>

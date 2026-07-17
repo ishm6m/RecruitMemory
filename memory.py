@@ -50,6 +50,38 @@ W_RECENCY = 0.3
 # =====================================================================
 # 1. EXTRACTION
 # =====================================================================
+_EXTRACTION_BASE = (
+    "You extract durable facts about a job candidate from an "
+    "interview conversation or a candidate document such as a "
+    "resume. Return ONLY a JSON array. Each item: "
+    '{"fact": str, "category": one of '
+    '["skill","score","red_flag","experience","note"], '
+    '"importance": integer 1-10}. '
+    "Only include NEW, concrete, candidate-specific facts. "
+    "If nothing worth remembering, return []."
+)
+
+# A live transcript is a two-person conversation with no speaker labels, so the
+# model must attribute facts to the candidate, not to the interviewer. This is the
+# lightweight stand-in for speaker diarization: the prompt knows two voices are
+# present and keeps the interviewer's own questions/requirements out of memory.
+# ponytail: prompt-level attribution; upgrade to real diarization if the ASR
+# starts returning speaker turns.
+_EXTRACTION_LIVE = (
+    " The text is a live interview transcript that interleaves the interviewer's "
+    "questions and the candidate's answers with NO speaker labels. Record ONLY "
+    "facts the CANDIDATE states or demonstrates about themselves. Never store the "
+    "interviewer's own questions, role requirements, or hypotheticals as candidate "
+    'facts (for example "we need five years on looms" is the interviewer speaking, '
+    "not a fact about the candidate)."
+)
+
+
+def _extraction_system(source):
+    """System prompt for fact extraction, made two-voice aware for live audio."""
+    return _EXTRACTION_BASE + (_EXTRACTION_LIVE if source == "live_transcript" else "")
+
+
 def extract_and_store(candidate_id, interviewer_msg, source="manual_note"):
     """
     Ask Qwen to read the interviewer's latest message and return NEW candidate
@@ -62,19 +94,7 @@ def extract_and_store(candidate_id, interviewer_msg, source="manual_note"):
     reply just parrots back recalled facts, which would create duplicates.
     """
     prompt = [
-        {
-            "role": "system",
-            "content": (
-                "You extract durable facts about a job candidate from an "
-                "interview conversation or a candidate document such as a "
-                "resume. Return ONLY a JSON array. Each item: "
-                '{"fact": str, "category": one of '
-                '["skill","score","red_flag","experience","note"], '
-                '"importance": integer 1-10}. '
-                "Only include NEW, concrete, candidate-specific facts. "
-                "If nothing worth remembering, return []."
-            ),
-        },
+        {"role": "system", "content": _extraction_system(source)},
         {"role": "user", "content": interviewer_msg},
     ]
     raw = qwen.chat(prompt, temperature=0)
@@ -339,6 +359,19 @@ def reflect(candidate_id):
     return {"insights": stored, "from_facts": len(facts)}
 
 
+def store_fact(candidate_id, fact_text, category="note", importance=5,
+               source="spreadsheet"):
+    """Store a KNOWN fact directly, skipping LLM extraction. For structured data
+    we already have verbatim (a contact email, a "resume link failed" note): the
+    extraction prompt would unreliably paraphrase or drop these, so we embed and
+    store them as-is. Returns the stored text, or None if it was blank."""
+    text = _no_dashes(str(fact_text).strip())
+    if not text:
+        return None
+    db.add_memory(candidate_id, text, category, importance, qwen.embed(text), source=source)
+    return text
+
+
 def suggest_questions(candidate_id):
     """
     5-8 interview questions (or one small practical task) tailored to what
@@ -364,6 +397,51 @@ def suggest_questions(candidate_id):
     ]
     proposed = _parse_json_array(qwen.chat(prompt, temperature=0.4))
     return [_no_dashes(str(q).strip()) for q in proposed if str(q).strip()][:8]
+
+
+def draft_scorecard(candidate_id, role):
+    """
+    Build a structured interview scorecard from what memory holds: 4-6 job-relevant
+    competencies, each with a 1-5 rating the model grounds in specific remembered
+    facts (0 when the facts give no evidence). Marries the evidence-first DNA to the
+    rubric recruiters use for consistency: the AI proposes and cites, the human
+    confirms or overrides in the UI.
+
+    Every citation is verified against the actual memory store, so a rating can
+    never rest on a fact the candidate does not have (no hallucinated evidence).
+    """
+    facts = db.get_active_memories(candidate_id)
+    if not facts:
+        return []
+    known = {m["fact_text"] for m in facts}
+    prompt = [
+        {"role": "system", "content": (
+            "You build a structured interview scorecard for a hiring team at Jabbar "
+            "Jute Mills. Given a candidate's role and the facts remembered about "
+            "them, propose 4 to 6 job-relevant COMPETENCIES to score. For each, give "
+            "a rating from 1 to 5 grounded ONLY in the facts (5 = strong evidence of "
+            "excellence, 1 = a clear concern), or 0 when the facts give no evidence "
+            "either way. Cite the exact fact strings you used, copied verbatim (cite "
+            "none when the rating is 0). Do not infer protected attributes. Return "
+            'ONLY a JSON array; each item {"competency": str, "rating": integer 0-5, '
+            '"rationale": str, "cited": [str, ...]}.'
+        )},
+        {"role": "user", "content": f"Role: {role or 'unspecified'}\n\nFacts:\n{_bullets(facts)}"},
+    ]
+    proposed = _parse_json_array(qwen.chat(prompt, temperature=0.2))
+    out = []
+    for p in proposed:
+        comp = _no_dashes(str(p.get("competency", "")).strip())
+        if not comp:
+            continue
+        rating = _clamp_importance(p.get("rating", 0), 0, lo=0, hi=5)
+        # citations must be REAL memories, copied verbatim; drop anything invented
+        cited = [c for c in (p.get("cited") or [])
+                 if isinstance(c, str) and c.strip() in known]
+        out.append({"competency": comp, "rating": rating,
+                    "rationale": _no_dashes(str(p.get("rationale", "")).strip()),
+                    "cited": cited, "ai_suggested": rating > 0})
+    return out[:6]
 
 
 def compare(candidate_ids, question):
@@ -518,6 +596,10 @@ if __name__ == "__main__":
     # auto-reflect gate: fires on a full batch of unreflected facts, not before
     assert _should_reflect(4, 0) and not _should_reflect(3, 0)
     assert not _should_reflect(4, 1) and _should_reflect(8, 1)
+    # live-transcript extraction is two-voice aware; notes/resume stay the base prompt
+    assert "CANDIDATE states or demonstrates" in _extraction_system("live_transcript")
+    assert "CANDIDATE states or demonstrates" not in _extraction_system("resume")
+    assert _extraction_system("manual_note") == _EXTRACTION_BASE
     # importance parse survives junk the model might return, and stays in range
     assert _clamp_importance("high", 5) == 5 and _clamp_importance(None, 5) == 5
     assert _clamp_importance("11", 5) == 10 and _clamp_importance(0, 5) == 1

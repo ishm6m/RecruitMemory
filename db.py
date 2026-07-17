@@ -37,7 +37,9 @@ def init_db():
             name       TEXT NOT NULL,
             role       TEXT,
             created_at REAL NOT NULL,
-            questions  TEXT NOT NULL DEFAULT '[]'  -- JSON array of suggested interview questions
+            questions  TEXT NOT NULL DEFAULT '[]',  -- JSON array of suggested interview questions
+            stage      TEXT NOT NULL DEFAULT 'applied',  -- pipeline stage (applied..hired/rejected)
+            scorecard  TEXT NOT NULL DEFAULT '[]'   -- JSON array of scored competencies
         );
 
         CREATE TABLE IF NOT EXISTS memories (
@@ -73,6 +75,10 @@ def init_db():
     cand_cols = [r[1] for r in _c.execute("PRAGMA table_info(candidates)")]
     if "questions" not in cand_cols:
         _c.execute("ALTER TABLE candidates ADD COLUMN questions TEXT NOT NULL DEFAULT '[]'")
+    if "stage" not in cand_cols:
+        _c.execute("ALTER TABLE candidates ADD COLUMN stage TEXT NOT NULL DEFAULT 'applied'")
+    if "scorecard" not in cand_cols:
+        _c.execute("ALTER TABLE candidates ADD COLUMN scorecard TEXT NOT NULL DEFAULT '[]'")
     _c.commit()
 
 
@@ -84,13 +90,15 @@ def create_candidate(name, role=""):
         (name, role, time.time()),
     )
     _c.commit()
-    return {"id": cur.lastrowid, "name": name, "role": role, "questions": []}
+    return {"id": cur.lastrowid, "name": name, "role": role,
+            "questions": [], "stage": "applied", "scorecard": []}
 
 
 def _cand(row):
-    """Row -> dict, with the questions JSON decoded to a real list."""
+    """Row -> dict, with the questions and scorecard JSON decoded to real lists."""
     d = dict(row)
     d["questions"] = json.loads(d.get("questions") or "[]")
+    d["scorecard"] = json.loads(d.get("scorecard") or "[]")
     return d
 
 
@@ -108,6 +116,19 @@ def set_questions(candidate_id, questions):
     """Store the suggested interview questions (a list of strings)."""
     _c.execute("UPDATE candidates SET questions = ? WHERE id = ?",
                (json.dumps(questions), candidate_id))
+    _c.commit()
+
+
+def set_stage(candidate_id, stage):
+    """Move a candidate to a pipeline stage. The app validates the value."""
+    _c.execute("UPDATE candidates SET stage = ? WHERE id = ?", (stage, candidate_id))
+    _c.commit()
+
+
+def set_scorecard(candidate_id, scorecard):
+    """Store the scored competencies (a list of dicts)."""
+    _c.execute("UPDATE candidates SET scorecard = ? WHERE id = ?",
+               (json.dumps(scorecard), candidate_id))
     _c.commit()
 
 
