@@ -4,8 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RecruitMemory · Jabbar Jute Mills</title>
-  <!-- Inline SVG favicon (accent bookmark) so the browser stops 404-ing on /favicon.ico. -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F6B5C'/%3E%3Cpath d='M11 8h10a1 1 0 0 1 1 1v15l-6-4-6 4V9a1 1 0 0 1 1-1z' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <!-- Brand mark for the tab, iOS home screen, and social link previews. -->
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta property="og:image" content="/apple-touch-icon.png" />
+  <meta name="twitter:card" content="summary" />
 
   <!-- Hugeicons stroke-rounded icon font (free, no account/API key needed). -->
   <link rel="stylesheet" href="https://cdn.hugeicons.com/font/hgi-stroke-rounded.css" />
@@ -141,9 +144,7 @@
                   flex flex-col -translate-x-full md:translate-x-0 transition-transform duration-200 ease-out">
       <!-- brand -->
       <div class="px-4 pt-4 pb-3 flex items-center gap-2.5">
-        <span class="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shrink-0">
-          <i class="hgi-stroke hgi-bookmark-02 text-14 text-white"></i>
-        </span>
+        <img src="/logo.png" alt="RecruitMemory" class="w-7 h-7 rounded-lg shrink-0" />
         <span class="min-w-0">
           <span class="block text-15 fw-650 track-tight leading-none">RecruitMemory</span>
           <span class="block text-12 text-text-secondary fw-450 mt-0.5 truncate">Jabbar Jute Mills · hiring</span>

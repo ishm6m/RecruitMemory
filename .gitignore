@@ -4,6 +4,10 @@
 # Database file (contains candidate data)
 *.db
 
+# Full-size brand masters (multi-MB); only the resized derivatives in static/ and docs/ are tracked
+/logo.png
+/favicon.png
+
 # Python noise
 __pycache__/
 *.pyc

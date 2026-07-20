@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="RecruitMemory" width="120" /></p>
+
 # RecruitMemory
 
 An AI hiring assistant that **remembers candidates across interview sessions.**
