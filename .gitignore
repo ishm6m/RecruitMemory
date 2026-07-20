@@ -7,6 +7,7 @@
 # Full-size brand masters (multi-MB); only the resized derivatives in static/ and docs/ are tracked
 /logo.png
 /favicon.png
+/transparent.png
 
 # Python noise
 __pycache__/
